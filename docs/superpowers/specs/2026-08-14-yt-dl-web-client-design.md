@@ -191,7 +191,26 @@ Umsetzung folgt TDD. Testebenen:
 - **Integration (optional, lokal):** echter yt-dlp-Aufruf hinter einem
   Build-Tag, läuft nicht in CI.
 
-## 10. Bewusst weggelassen (YAGNI)
+## 10. Build & Entwicklungs-Workflow (Make)
+
+Alle Standardaufgaben laufen über ein `Makefile` im Projekt-Root — es ist die
+zentrale, dokumentierte Stelle für wiederkehrende Kommandos:
+
+| Target | Zweck |
+|---|---|
+| `make build` | Go-Binary lokal bauen (`CGO_ENABLED=0`, nach `bin/app`) |
+| `make test` | Alle Go-Tests ausführen |
+| `make check` | `gofmt`-Prüfung + `go vet` + `make test` |
+| `make run` | Service lokal starten (mit `./tmp/downloads` und `./tmp/config` als Volumes-Ersatz) |
+| `make image` | Docker-Image für amd64 bauen (`docker build`) |
+| `make up` / `make down` | Container per `docker compose` starten/stoppen |
+| `make clean` | Build-Artefakte und `./tmp` entfernen |
+
+`make image` ist der einzige unterstützte Weg, das Image zu bauen; CI oder
+NAS-Deployment rufen dieselben Targets auf. Neue Standardaufgaben werden als
+weitere Targets ergänzt, nicht als lose Shell-Kommandos dokumentiert.
+
+## 11. Bewusst weggelassen (YAGNI)
 
 - Kein Auth (LAN-only; bei Bedarf später Reverse-Proxy).
 - Kein Transcoding/mp3-Konvertierung — „Nur Audio" lädt das Quellformat
@@ -200,7 +219,7 @@ Umsetzung folgt TDD. Testebenen:
 - Kein Multi-Arch-Build (nur amd64).
 - Keine WebSockets/SSE — Polling reicht für den LAN-Anwendungsfall.
 
-## 11. Nächster Schritt
+## 12. Nächster Schritt
 
 Implementierungsplan über den `writing-plans`-Skill erstellen
 (nach Nutzer-Review dieser Spec).

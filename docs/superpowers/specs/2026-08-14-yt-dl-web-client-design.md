@@ -67,6 +67,8 @@ ENTRYPOINT ["/usr/local/bin/app"]
 | `MAX_CONCURRENT` | Anzahl paralleler Downloads (Worker) | `3` |
 | `OUTPUT_TEMPLATE` | yt-dlp-Dateinamensschema unterhalb `/downloads` | `%(title)s [%(id)s].%(ext)s` |
 | `YTDLP_UPDATE_ON_START` | Beim Containerstart yt-dlp aktualisieren (Ablauf siehe unten) | `true` |
+| `DOWNLOAD_DIR` | Zielverzeichnis (nur für lokale Entwicklung via `make run` relevant) | `/downloads` |
+| `CONFIG_DIR` | Konfigurations-/Persistenzverzeichnis (nur für lokale Entwicklung relevant) | `/config` |
 
 **yt-dlp-Update-Mechanismus:** Der Container läuft als Nicht-root
 (`user:` im Compose), daher kann `yt-dlp -U` das root-eigene Binary unter
@@ -116,7 +118,7 @@ kein Web-Framework. Vier Komponenten mit klaren Schnittstellen:
 ### 4.4 Runner
 
 - Startet pro Job:
-  `yt-dlp -f <formatausdruck> -o /downloads/<OUTPUT_TEMPLATE> --newline --progress-template "dl:%(progress._percent_str)s|%(progress.speed)s|%(progress.eta)s" --continue --no-playlist <url>`
+  `yt-dlp -f <formatausdruck> -o /downloads/<OUTPUT_TEMPLATE> --newline --progress-template "dl:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s" --continue --no-playlist <url>`
 - Parst Fortschritt (%, Geschwindigkeit, ETA) zeilenweise aus stdout
   (Zeilenpräfix `dl:`, Felder `|`-getrennt).
 - Liegt hinter einem Go-Interface, damit Tests einen Fake-Runner verwenden können.

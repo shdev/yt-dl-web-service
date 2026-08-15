@@ -108,7 +108,10 @@ type Prober struct {
 }
 
 func (p *Prober) Probe(ctx context.Context, rawURL string) (*ProbeResult, error) {
-	cmd := exec.CommandContext(ctx, p.Bin, "-J", "--flat-playlist", "--no-warnings", rawURL)
+	if strings.HasPrefix(rawURL, "-") {
+		return nil, fmt.Errorf("ungültige URL")
+	}
+	cmd := exec.CommandContext(ctx, p.Bin, "-J", "--flat-playlist", "--no-warnings", "--", rawURL)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

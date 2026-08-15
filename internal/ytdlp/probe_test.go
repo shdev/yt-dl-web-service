@@ -83,3 +83,10 @@ func TestProberSurfacesStderr(t *testing.T) {
 		t.Fatalf("stderr muss im Fehler auftauchen, war: %v", err)
 	}
 }
+
+func TestProberRejectsFlagLikeURL(t *testing.T) {
+	p := &ytdlp.Prober{Bin: "testdata/fake-yt-dlp.sh"}
+	if _, err := p.Probe(context.Background(), "--exec=id"); err == nil {
+		t.Fatal("URL mit führendem '-' muss abgelehnt werden")
+	}
+}

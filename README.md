@@ -1,4 +1,4 @@
-# yt-dl-web-client
+# yt-dl-web-service
 
 A self-hosted web UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built to
 run on a NAS. Paste a video or playlist URL, pick the exact video/audio format
@@ -80,6 +80,34 @@ make image     # build the Docker image (amd64)
 ```
 
 The design spec and implementation plan live in `docs/superpowers/`.
+
+## Using the prebuilt image (GHCR)
+
+Instead of building locally, the NAS can pull the published image. In
+`docker-compose.yml`, remove the `build: .` line and use:
+
+```yaml
+    image: ghcr.io/shdev/yt-dl-web-service:latest
+```
+
+The package is public — no `docker login` is needed for pulling.
+
+## Publishing the image (maintainers)
+
+The image is pushed manually from a workstation — no CI involved:
+
+```bash
+# one-time: create a classic personal access token with the write:packages
+# scope, then log in (the token lands in your credential helper):
+echo $GHCR_TOKEN | docker login ghcr.io -u shdev --password-stdin
+
+make push          # builds, tags and pushes ghcr.io/shdev/yt-dl-web-service:latest
+make push TAG=v1   # same, with a specific tag
+```
+
+Note: the first push creates a *private* package. Switch it to *public* once
+in the package settings on GitHub (Packages → yt-dl-web-service → Package
+settings → Change visibility) so it can be pulled without authentication.
 
 ## License
 

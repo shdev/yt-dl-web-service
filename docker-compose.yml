@@ -1,7 +1,10 @@
 services:
   yt-dl-web:
     build: .
-    image: yt-dl-web-client
+    # NAS-Deployment ohne lokalen Build: "build: ." entfernen und stattdessen
+    # das veröffentlichte Image ziehen:
+    #   image: ghcr.io/shdev/yt-dl-web-service:latest
+    image: yt-dl-web-service
     container_name: yt-dl-web
     # UID:GID des NAS-Nutzers, dem die Downloads gehören sollen
     user: "1000:1000"

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -53,11 +55,17 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 			onProgress(p)
 		}
 	}
-	err = cmd.Wait()
-	if ctx.Err() != nil {
-		return ctx.Err()
+	if serr := sc.Err(); serr != nil {
+		// Pipe leeren, sonst kann yt-dlp am vollen stdout blockieren und
+		// cmd.Wait() hängt für immer (Worker-Slot ginge verloren).
+		log.Printf("yt-dlp: stdout-Scan-Fehler, leere Pipe: %v", serr)
+		_, _ = io.Copy(io.Discard, stdout)
 	}
+	err = cmd.Wait()
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("yt-dlp: %w: %s", err, stderr.String())
 	}
 	return nil

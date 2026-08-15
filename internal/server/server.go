@@ -4,8 +4,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"html/template"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"ytdlweb/internal/job"
 	"ytdlweb/internal/queue"
@@ -19,13 +22,15 @@ type Prober interface {
 }
 
 type Server struct {
-	store  *store.Store
-	queue  *queue.Queue
-	prober Prober
+	store     *store.Store
+	queue     *queue.Queue
+	prober    Prober
+	indexTmpl *template.Template
 }
 
 func New(st *store.Store, q *queue.Queue, p Prober) http.Handler {
-	s := &Server{store: st, queue: q, prober: p}
+	tmpl := template.Must(template.ParseFS(web.FS, "templates/index.html"))
+	s := &Server{store: st, queue: q, prober: p, indexTmpl: tmpl}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.Handle("GET /static/", http.FileServerFS(web.FS))
@@ -50,13 +55,10 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	data, err := web.FS.ReadFile("templates/index.html")
-	if err != nil {
-		http.Error(w, "Template fehlt", http.StatusInternalServerError)
-		return
-	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(data)
+	if err := s.indexTmpl.Execute(w, map[string]any{"Profiles": ytdlp.Profiles}); err != nil {
+		log.Printf("index-template: %v", err)
+	}
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +73,9 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "url fehlt")
 		return
 	}
-	res, err := s.prober.Probe(r.Context(), strings.TrimSpace(req.URL))
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	res, err := s.prober.Probe(ctx, strings.TrimSpace(req.URL))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return

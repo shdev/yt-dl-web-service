@@ -1,10 +1,12 @@
 package ytdlp
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 // EnsureBinary stellt eine schreibbare yt-dlp-Kopie unter <configDir>/bin
@@ -19,7 +21,9 @@ func EnsureBinary(systemBin, configDir string, update bool, logf func(format str
 		}
 	}
 	if update {
-		if out, err := exec.Command(dst, "-U").CombinedOutput(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if out, err := exec.CommandContext(ctx, dst, "-U").CombinedOutput(); err != nil {
 			logf("yt-dlp-Update fehlgeschlagen (weiter mit vorhandener Version): %v: %s",
 				err, tailString(string(out), 300))
 		}

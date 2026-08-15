@@ -49,12 +49,14 @@ func (q *Queue) Kick() {
 func (q *Queue) Start(ctx context.Context) {
 	q.root = ctx
 	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-q.wake:
-			case <-time.After(time.Second):
+			case <-ticker.C:
 			}
 			q.dispatch(ctx)
 		}

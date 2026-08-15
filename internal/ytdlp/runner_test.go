@@ -50,6 +50,23 @@ func TestExecRunnerSurfacesStderr(t *testing.T) {
 	}
 }
 
+func TestExecRunnerSurvivesOversizedLine(t *testing.T) {
+	r := &ytdlp.ExecRunner{
+		Bin: "testdata/dl-hugeline.sh", DownloadDir: t.TempDir(),
+		OutputTemplate: "x.%(ext)s",
+	}
+	done := make(chan error, 1)
+	go func() { done <- r.Run(context.Background(), testJob(), func(job.Progress) {}) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Scan-Fehler darf den Job nicht scheitern lassen: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Runner hängt bei überlanger stdout-Zeile")
+	}
+}
+
 func TestExecRunnerCancel(t *testing.T) {
 	r := &ytdlp.ExecRunner{
 		Bin: "testdata/dl-sleep.sh", DownloadDir: t.TempDir(),

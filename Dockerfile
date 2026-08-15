@@ -1,7 +1,6 @@
 # Stage 1: Go-Build
 FROM golang:1.24 AS build
 WORKDIR /src
-COPY go.mod ./
 COPY . .
 RUN CGO_ENABLED=0 go build -o /app ./cmd/server
 

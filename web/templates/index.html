@@ -62,11 +62,8 @@
         <div id="playlist-options" class="d-none">
           <label class="form-label" for="profile-select">Qualitätsprofil</label>
           <select class="form-select" id="profile-select">
-            <option value="best">Beste Qualität</option>
-            <option value="1080p">Beste ≤1080p</option>
-            <option value="720p">Beste ≤720p</option>
-            <option value="audio">Nur Audio</option>
-          </select>
+          {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
+          {{end}}</select>
         </div>
 
         <button class="btn btn-success mt-3" id="start-btn">Download starten</button>

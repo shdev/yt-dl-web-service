@@ -80,6 +80,10 @@ func TestIndexAndStatic(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "yt-dl Web") {
 		t.Fatalf("Index fehlt: %d", rec.Code)
 	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Beste ≤1080p") || !strings.Contains(body, `value="720p"`) {
+		t.Fatalf("Profile aus ytdlp.Profiles fehlen im gerenderten Index: %s", body)
+	}
 	rec = do(t, h, "GET", "/static/app.js", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Static-Route: %d", rec.Code)

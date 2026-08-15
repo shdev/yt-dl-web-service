@@ -134,7 +134,7 @@ async function start() {
   hide($("start-error"));
   try {
     if (probeResult.type === "playlist") {
-      await api("/api/jobs", {
+      const res = await api("/api/jobs", {
         method: "POST",
         body: JSON.stringify({
           type: "playlist",
@@ -143,6 +143,12 @@ async function start() {
           entries: probeResult.playlist.entries,
         }),
       });
+      hide($("select-card"));
+      $("url-input").value = "";
+      await refreshJobs();
+      if (res && res.skipped > 0) {
+        alert(`${res.skipped} Eintrag/Einträge übersprungen (bereits in der Warteschlange oder ohne URL).`);
+      }
     } else {
       const mode = currentMode();
       await api("/api/jobs", {
@@ -157,10 +163,10 @@ async function start() {
           format_label: formatLabel(mode),
         }),
       });
+      hide($("select-card"));
+      $("url-input").value = "";
+      await refreshJobs();
     }
-    hide($("select-card"));
-    $("url-input").value = "";
-    await refreshJobs();
   } catch (err) {
     $("start-error").textContent = err.message;
     show($("start-error"));

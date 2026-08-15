@@ -76,8 +76,9 @@ func run(cfg config.Config) error {
 	q.Kick() // durch Recovery wieder eingereihte Jobs sofort anstoßen
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: server.New(st, q, &ytdlp.Prober{Bin: bin}),
+		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Handler:           server.New(st, q, &ytdlp.Prober{Bin: bin}),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()

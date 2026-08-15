@@ -2218,9 +2218,10 @@ function show(el) { el.classList.remove("d-none"); }
 function hide(el) { el.classList.add("d-none"); }
 
 function esc(s) {
-  const div = document.createElement("div");
-  div.textContent = s ?? "";
-  return div.innerHTML;
+  // Escapt auch Quotes — der Wert landet teils in Attribut-Kontexten.
+  return String(s ?? "").replace(/[&<>"'`]/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;",
+  }[c]));
 }
 
 function humanSize(bytes) {
@@ -2394,7 +2395,7 @@ async function refreshJobs() {
 
 function renderJobs(jobs) {
   $("jobs-tbody").innerHTML = jobs.map((j) => {
-    const [badge, label] = STATE_BADGES[j.state] || ["text-bg-secondary", j.state];
+    const [badge, label] = STATE_BADGES[j.state] || ["text-bg-secondary", esc(j.state)];
     const pct = Math.round(j.progress?.percent || 0);
     let title = esc(j.title || j.url);
     if (j.playlist_title) {
@@ -3153,7 +3154,6 @@ git commit -m "feat: Server-Wiring mit Graceful Shutdown und -healthcheck"
 **Files:**
 - Create: `Dockerfile`
 - Create: `docker-compose.yml`
-- Create: `README.md`
 
 **Interfaces:**
 - Consumes: Make-Targets (Task 1), Binary (Task 13)
@@ -3201,8 +3201,11 @@ services:
     restart: unless-stopped
 ```
 
-- [ ] **Step 3: README.md anlegen**
+- [ ] **Step 3: README — entfällt hier**
 
+Die README entsteht als eigener Task 16 (englischsprachige GitHub-README + LICENSE, Nutzer-Anforderung vom 2026-08-15). Dieser Schritt entfällt ersatzlos.
+
+<!-- ehemaliger deutscher README-Entwurf, ersetzt durch Task 16:
 ````markdown
 # yt-dl-web-client
 
@@ -3242,6 +3245,7 @@ make image     # Docker-Image bauen (amd64)
 
 Design-Spec: `docs/superpowers/specs/2026-08-14-yt-dl-web-client-design.md`
 ````
+-->
 
 - [ ] **Step 4: Image bauen und Smoke-Test**
 
@@ -3260,8 +3264,8 @@ Falls Docker lokal nicht verfügbar ist: Schritt dokumentiert überspringen und 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Dockerfile docker-compose.yml README.md
-git commit -m "feat: Docker-Image auf mikenye-Base mit Compose-Vorlage und README"
+git add Dockerfile docker-compose.yml
+git commit -m "feat: Docker-Image auf mikenye-Base mit Compose-Vorlage"
 ```
 
 ---
@@ -3324,6 +3328,144 @@ Expected: PASS (oder SKIP ohne yt-dlp)
 ```bash
 git add internal/ytdlp/integration_test.go
 git commit -m "test: optionaler Integrationstest gegen reales yt-dlp"
+```
+
+---
+
+### Task 16: GitHub-README (englisch) & LICENSE
+
+Nutzer-Anforderung (2026-08-15): Das Repo wird auf GitHub veröffentlicht; andere
+sollen von der Arbeit profitieren, und der Nutzer will selbst nachlesen können,
+wie man das Projekt aufruft. Sprache: Englisch. Lizenz: PolyForm Noncommercial
+1.0.0 (kommerzielle Nutzung ausgeschlossen — bewusst kein OSI-Open-Source).
+
+**Files:**
+- Create: `README.md`
+- Create: `LICENSE.md`
+
+**Interfaces:**
+- Consumes: Make-Targets (Task 1), Compose/Dockerfile (Task 14), Env-Defaults (Task 9)
+- Produces: öffentliche Projekt-Dokumentation; keine Code-Schnittstellen
+
+- [ ] **Step 1: LICENSE.md anlegen**
+
+Offiziellen Lizenztext der PolyForm Noncommercial 1.0.0 beschaffen (Quelle:
+https://polyformproject.org/licenses/noncommercial/1.0.0/ — den reinen
+Lizenztext übernehmen, keine Website-Navigation). Verifizieren, dass die Datei
+die Phrasen „PolyForm Noncommercial License 1.0.0" und „noncommercial purposes"
+(case-insensitiv) enthält und mindestens 3 KB groß ist.
+
+- [ ] **Step 2: README.md anlegen** (Inhalt verbatim)
+
+````markdown
+# yt-dl-web-client
+
+A self-hosted web UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built to
+run on a NAS. Paste a video or playlist URL, pick the exact video/audio format
+(or a quality profile), and let the server download in the background — with a
+persistent job queue, live progress, and parallel downloads. Finished files
+land directly in a mounted folder (e.g. your media library).
+
+## Features
+
+- Paste a URL, inspect title, thumbnail and every available format (via `yt-dlp -J`)
+- Pick exact video + audio formats, best quality, or audio-only
+- Playlist support: one job per video, with quality profiles (best / ≤1080p / ≤720p / audio only)
+- Parallel downloads (configurable), with live progress, speed and ETA
+- Persistent job queue: survives container restarts, interrupted downloads resume (`--continue`)
+- Retry, cancel and remove jobs from the UI (removing a job never deletes files)
+- Single container: one Go binary with an embedded Bootstrap UI, no CDN, UI works offline
+- Optional yt-dlp self-update on container start
+
+## Quick start
+
+Requires Docker with Compose v2. Clone the repository, then:
+
+```bash
+make up        # builds the image and starts the container
+```
+
+Open `http://<your-host>:8080`, paste a URL, choose a format, hit
+"Download starten". Finished files appear in `./data/downloads/`.
+
+```bash
+make down      # stops the container
+```
+
+Before the first start, adjust `docker-compose.yml`:
+
+- `user:` — UID:GID that should own the downloaded files
+- `volumes:` — where downloads and the queue state are stored
+- `ports:` — host port (default 8080)
+
+> **Note:** The web UI has no authentication. Run it on a trusted network
+> (LAN), or put a reverse proxy with auth in front of it.
+
+## Configuration
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `8080` | HTTP port of the web service |
+| `MAX_CONCURRENT` | `3` | Number of parallel downloads |
+| `OUTPUT_TEMPLATE` | `%(title)s [%(id)s].%(ext)s` | yt-dlp output filename template |
+| `YTDLP_UPDATE_ON_START` | `true` | Update yt-dlp when the container starts |
+
+| Volume mount | Purpose |
+|---|---|
+| `/downloads` | Target directory for finished downloads |
+| `/config` | Persistent state: job queue (`jobs.json`) and the updated yt-dlp binary |
+
+## How it works
+
+- A small Go server (standard library only) shells out to yt-dlp: `-J` to
+  probe formats, a worker pool with a machine-readable progress template for
+  downloads.
+- Jobs are persisted to `/config/jobs.json` on every state change (atomic
+  temp-file + rename). After a restart, interrupted jobs are re-queued and
+  resume from their `.part` files.
+- The UI (Bootstrap 5, vanilla JS, German) polls `/api/jobs` every 1.5 s.
+- The Docker image is based on `mikenye/youtube-dl` (ships yt-dlp + ffmpeg),
+  built for amd64.
+
+## Development
+
+Requires Go ≥ 1.23; there are no external Go dependencies.
+
+```bash
+make check     # gofmt + go vet + tests
+make run       # run locally on :8080 (uses ./tmp as volume substitute;
+               # real downloads need a yt-dlp binary at /usr/local/bin/yt-dlp)
+make image     # build the Docker image (amd64)
+```
+
+The design spec and implementation plan live in `docs/superpowers/`.
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE.md) — you may use, modify and share
+this software for any noncommercial purpose; commercial use is not permitted.
+
+Bundled components keep their own licenses: Bootstrap (MIT, vendored),
+yt-dlp (Unlicense, pulled at image build/start time).
+````
+
+- [ ] **Step 3: Referenzen prüfen**
+
+Verifizieren, dass jede README-Aussage stimmt: genannte Make-Targets existieren im Makefile
+(`up`, `down`, `check`, `run`, `image`), Env-Defaults stimmen mit `internal/config/config.go`
+überein, Volume-Pfade mit `docker-compose.yml`, Port mit dem Compose-Mapping.
+Abweichungen an der README korrigieren (Code bleibt unangetastet).
+
+- [ ] **Step 4: make check**
+
+Run: `make check`
+Expected: grün (Docs-only-Änderung, Sicherheitsnetz).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add README.md LICENSE.md
+git commit -m "docs: englische GitHub-README und PolyForm-Noncommercial-Lizenz"
 ```
 
 ---

@@ -2,8 +2,10 @@ package store_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"ytdlweb/internal/job"
@@ -133,5 +135,31 @@ func TestOpenCorruptFile(t *testing.T) {
 	}
 	if _, err := store.Open(path); err == nil {
 		t.Fatal("korrupte Datei muss Fehler liefern")
+	}
+}
+
+func TestConcurrentAccess(t *testing.T) {
+	st, _ := openStore(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			j := job.New(fmt.Sprintf("https://example.com/%d", i), "t", "ba", "l", "")
+			if err := st.Add(j); err != nil {
+				t.Error(err)
+				return
+			}
+			st.SetProgress(j.ID, job.Progress{Percent: float64(i)})
+			_, _ = st.ClaimNextQueued()
+			_ = st.List()
+			if _, ok := st.Get(j.ID); !ok {
+				t.Errorf("job %s fehlt", j.ID)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if got := len(st.List()); got != 8 {
+		t.Fatalf("8 Jobs erwartet, %d vorhanden", got)
 	}
 }

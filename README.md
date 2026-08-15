@@ -1,0 +1,89 @@
+# yt-dl-web-client
+
+A self-hosted web UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp), built to
+run on a NAS. Paste a video or playlist URL, pick the exact video/audio format
+(or a quality profile), and let the server download in the background — with a
+persistent job queue, live progress, and parallel downloads. Finished files
+land directly in a mounted folder (e.g. your media library).
+
+## Features
+
+- Paste a URL, inspect title, thumbnail and every available format (via `yt-dlp -J`)
+- Pick exact video + audio formats, best quality, or audio-only
+- Playlist support: one job per video, with quality profiles (best / ≤1080p / ≤720p / audio only)
+- Parallel downloads (configurable), with live progress, speed and ETA
+- Persistent job queue: survives container restarts, interrupted downloads resume (`--continue`)
+- Retry, cancel and remove jobs from the UI (removing a job never deletes files)
+- Single container: one Go binary with an embedded Bootstrap UI, no CDN, UI works offline
+- Optional yt-dlp self-update on container start
+
+## Quick start
+
+Requires Docker with Compose v2. Clone the repository, then:
+
+```bash
+make up        # builds the image and starts the container
+```
+
+Open `http://<your-host>:8080`, paste a URL, choose a format, hit
+"Download starten". Finished files appear in `./data/downloads/`.
+
+```bash
+make down      # stops the container
+```
+
+Before the first start, adjust `docker-compose.yml`:
+
+- `user:` — UID:GID that should own the downloaded files
+- `volumes:` — where downloads and the queue state are stored
+- `ports:` — host port (default 8080)
+
+> **Note:** The web UI has no authentication. Run it on a trusted network
+> (LAN), or put a reverse proxy with auth in front of it.
+
+## Configuration
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `8080` | HTTP port of the web service |
+| `MAX_CONCURRENT` | `3` | Number of parallel downloads |
+| `OUTPUT_TEMPLATE` | `%(title)s [%(id)s].%(ext)s` | yt-dlp output filename template |
+| `YTDLP_UPDATE_ON_START` | `true` | Update yt-dlp when the container starts |
+
+| Volume mount | Purpose |
+|---|---|
+| `/downloads` | Target directory for finished downloads |
+| `/config` | Persistent state: job queue (`jobs.json`) and the updated yt-dlp binary |
+
+## How it works
+
+- A small Go server (standard library only) shells out to yt-dlp: `-J` to
+  probe formats, a worker pool with a machine-readable progress template for
+  downloads.
+- Jobs are persisted to `/config/jobs.json` on every state change (atomic
+  temp-file + rename). After a restart, interrupted jobs are re-queued and
+  resume from their `.part` files.
+- The UI (Bootstrap 5, vanilla JS, German) polls `/api/jobs` every 1.5 s.
+- The Docker image is based on `mikenye/youtube-dl` (ships yt-dlp + ffmpeg),
+  built for amd64.
+
+## Development
+
+Requires Go ≥ 1.23; there are no external Go dependencies.
+
+```bash
+make check     # gofmt + go vet + tests
+make run       # run locally on :8080 (uses ./tmp as volume substitute;
+               # real downloads need a yt-dlp binary at /usr/local/bin/yt-dlp)
+make image     # build the Docker image (amd64)
+```
+
+The design spec and implementation plan live in `docs/superpowers/`.
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE.md) — you may use, modify and share
+this software for any noncommercial purpose; commercial use is not permitted.
+
+Bundled components keep their own licenses: Bootstrap (MIT, vendored),
+yt-dlp (Unlicense, pulled at image build/start time).

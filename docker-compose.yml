@@ -1,0 +1,17 @@
+services:
+  yt-dl-web:
+    build: .
+    image: yt-dl-web-client
+    container_name: yt-dl-web
+    # UID:GID des NAS-Nutzers, dem die Downloads gehören sollen
+    user: "1000:1000"
+    ports:
+      - "8080:8080"
+    environment:
+      MAX_CONCURRENT: "3"
+      YTDLP_UPDATE_ON_START: "true"
+      # OUTPUT_TEMPLATE: "%(title)s [%(id)s].%(ext)s"
+    volumes:
+      - ./data/downloads:/downloads
+      - ./data/config:/config
+    restart: unless-stopped

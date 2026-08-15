@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -338,5 +339,43 @@ func TestPutSettingsBadBody(t *testing.T) {
 	rec := doRaw(t, h, "PUT", "/api/settings", "{kaputt")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("kaputter Body: %d", rec.Code)
+	}
+}
+
+// TestGetSettingsNormalizesUnknownProfile ist ein Regressionstest: eine bereits
+// auf Disk liegende settings.json mit unbekanntem Profil-Key (z.B. weil ein
+// Profil zwischenzeitlich entfernt wurde) darf GET /api/settings nicht mit
+// dem ungültigen Wert beantworten — normalisiert wird auf "best".
+func TestGetSettingsNormalizesUnknownProfile(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"default_profile":"gibtsnicht"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(dir, "jobs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := settings.Open(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := server.New(st, queue.New(st, nopRunner{}, 1), fakeProber{}, set)
+	rec := do(t, h, "GET", "/api/settings", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"default_profile":"best"`) {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCreateVideoJobWithProfileDuplicate stellt sicher, dass der Duplikat-Check
+// auch für den Profil-Pfad greift (nicht nur für manuell gewählte format_ids).
+func TestCreateVideoJobWithProfileDuplicate(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	body := map[string]any{"type": "video", "url": "https://example.com/v", "profile": "1080p-mp4"}
+	if rec := do(t, h, "POST", "/api/jobs", body); rec.Code != http.StatusCreated {
+		t.Fatalf("erster: %d", rec.Code)
+	}
+	if rec := do(t, h, "POST", "/api/jobs", body); rec.Code != http.StatusConflict {
+		t.Fatalf("Profil-Duplikat muss 409 liefern, war %d", rec.Code)
 	}
 }

@@ -1152,7 +1152,10 @@ type Prober struct {
 }
 
 func (p *Prober) Probe(ctx context.Context, rawURL string) (*ProbeResult, error) {
-	cmd := exec.CommandContext(ctx, p.Bin, "-J", "--flat-playlist", "--no-warnings", rawURL)
+	if strings.HasPrefix(rawURL, "-") {
+		return nil, fmt.Errorf("ungültige URL")
+	}
+	cmd := exec.CommandContext(ctx, p.Bin, "-J", "--flat-playlist", "--no-warnings", "--", rawURL)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -1198,7 +1201,7 @@ git commit -m "feat: Probe mit -J-Parsing für Video und Playlist"
 - Consumes: `ParseProgress`, `ProgressTemplate` (Task 5), `ytdlweb/internal/job` (Task 2)
 - Produces (erfüllt das `queue.Runner`-Interface aus Task 10):
   - `type ExecRunner struct { Bin, DownloadDir, OutputTemplate string }`
-  - `func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Progress)) error` — Aufruf: `<Bin> -f <j.Format> -o <DownloadDir>/<OutputTemplate> --newline --progress-template <ProgressTemplate> --continue --no-playlist --no-warnings <j.URL>`; eigene Prozessgruppe, Cancel = SIGTERM an die Gruppe (Spec §4.3); bei ctx-Abbruch → `ctx.Err()`; bei Exit ≠ 0 → Fehler mit stderr-Auszug
+  - `func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Progress)) error` — Aufruf: `<Bin> -f <j.Format> -o <DownloadDir>/<OutputTemplate> --newline --progress-template <ProgressTemplate> --continue --no-playlist --no-warnings -- <j.URL>` (das `--`-Sentinel verhindert Argument-Injection über die URL); eigene Prozessgruppe, Cancel = SIGTERM an die Gruppe (Spec §4.3); bei ctx-Abbruch → `ctx.Err()`; bei Exit ≠ 0 → Fehler mit stderr-Auszug
 
 - [ ] **Step 1: Test-Skripte anlegen**
 
@@ -1346,7 +1349,7 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 		"--continue",
 		"--no-playlist",
 		"--no-warnings",
-		j.URL,
+		"--", j.URL,
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {

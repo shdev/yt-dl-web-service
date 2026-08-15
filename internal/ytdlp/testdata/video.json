@@ -1,0 +1,11 @@
+{
+  "id": "dQw4w9WgXcQ",
+  "title": "Test Video",
+  "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+  "duration": 212.0,
+  "formats": [
+    {"format_id": "251", "ext": "webm", "resolution": "audio only", "fps": null, "vcodec": "none", "acodec": "opus", "abr": 132.4, "filesize": 3405231, "format_note": "medium"},
+    {"format_id": "136", "ext": "mp4", "resolution": "1280x720", "fps": 25, "vcodec": "avc1.4d401f", "acodec": "none", "tbr": 1153.1, "filesize": 30528975, "format_note": "720p"},
+    {"format_id": "303", "ext": "webm", "resolution": "1920x1080", "fps": 50, "vcodec": "vp9", "acodec": "none", "tbr": 2205.4, "filesize_approx": 58342123, "format_note": "1080p50"}
+  ]
+}

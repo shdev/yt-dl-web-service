@@ -1,0 +1,10 @@
+{
+  "_type": "playlist",
+  "id": "PLtest",
+  "title": "Test Playlist",
+  "entries": [
+    {"_type": "url", "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa", "title": "Erstes Video"},
+    {"_type": "url", "url": "https://www.youtube.com/watch?v=bbbbbbbbbbb", "title": "Zweites Video"},
+    {"_type": "url", "url": "", "title": "Kaputter Eintrag ohne URL"}
+  ]
+}

@@ -22,6 +22,7 @@ type Queue struct {
 	wake    chan struct{}
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+	root    context.Context
 }
 
 func New(st *store.Store, r Runner, maxConcurrent int) *Queue {
@@ -46,6 +47,7 @@ func (q *Queue) Kick() {
 }
 
 func (q *Queue) Start(ctx context.Context) {
+	q.root = ctx
 	go func() {
 		for {
 			select {
@@ -97,6 +99,11 @@ func (q *Queue) runJob(ctx context.Context, cancel context.CancelFunc, j job.Job
 			x.Progress = job.Progress{Percent: 100}
 		})
 	case ctx.Err() != nil:
+		if q.root != nil && q.root.Err() != nil {
+			// Shutdown, kein Nutzer-Abbruch: Zustand bleibt running,
+			// die Crash-Recovery reiht den Job beim nächsten Start wieder ein.
+			return
+		}
 		uerr = q.store.Update(j.ID, func(x *job.Job) { x.State = job.StateCanceled })
 	default:
 		uerr = q.store.Update(j.ID, func(x *job.Job) {

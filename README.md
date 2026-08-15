@@ -22,6 +22,7 @@ land directly in a mounted folder (e.g. your media library).
 Requires Docker with Compose v2. Clone the repository, then:
 
 ```bash
+mkdir -p data/downloads data/config   # create these first — they must be writable by the user configured below
 make up        # builds the image and starts the container
 ```
 

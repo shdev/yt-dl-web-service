@@ -134,6 +134,29 @@ func TestQueueCancelRunning(t *testing.T) {
 	waitState(t, st, j.ID, job.StateCanceled)
 }
 
+func TestQueueShutdownKeepsRunningState(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "jobs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr := &fakeRunner{started: make(chan string, 1), release: make(chan struct{})}
+	q := queue.New(st, fr, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	q.Start(ctx)
+	j := job.New("https://example.com/shutdown", "t", "ba", "l", "")
+	if err := st.Add(j); err != nil {
+		t.Fatal(err)
+	}
+	q.Kick()
+	<-fr.started
+	cancel() // Shutdown (Root-Context), kein Nutzer-Cancel
+	time.Sleep(200 * time.Millisecond)
+	got, _ := st.Get(j.ID)
+	if got.State != job.StateRunning {
+		t.Fatalf("Shutdown darf running nicht überschreiben, war %s", got.State)
+	}
+}
+
 func TestQueueCancelQueued(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "jobs.json"))
 	if err != nil {

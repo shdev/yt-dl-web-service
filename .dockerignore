@@ -1,0 +1,9 @@
+.git
+.remember
+.superpowers
+bin
+tmp
+data
+docs
+.dockerignore
+docker-compose.yml

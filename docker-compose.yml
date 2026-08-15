@@ -11,6 +11,9 @@ services:
       MAX_CONCURRENT: "3"
       YTDLP_UPDATE_ON_START: "true"
       # OUTPUT_TEMPLATE: "%(title)s [%(id)s].%(ext)s"
+    # Create ./data/downloads and ./data/config BEFORE first start (mkdir -p data/downloads data/config)
+    # and make sure they are writable by the user above — otherwise Docker creates them root-owned
+    # and the container cannot write (healthcheck stays green, but every job fails).
     volumes:
       - ./data/downloads:/downloads
       - ./data/config:/config

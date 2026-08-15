@@ -130,7 +130,9 @@ kein Web-Framework. Vier Komponenten mit klaren Schnittstellen:
 2. UI zeigt Formatauswahl (Video- und Audioformat aus der Formatliste).
 3. `POST /api/jobs` mit gewählten format_ids → yt-dlp-Ausdruck wie `303+251`.
    Schnellwahl „Beste Qualität" → `bv*+ba/b`; „Nur Audio" → `<audio format_id>`
-   bzw. `ba` als Voreinstellung.
+   bzw. `ba` als Voreinstellung. Alternativ kann statt manueller Formatwahl
+   eines der Qualitätsprofile gewählt werden (Voreinstellung: das über die
+   Einstellungs-Card konfigurierte Standard-Profil).
 4. Job läuft durch die Queue; UI pollt den Fortschritt.
 
 **Playlist:**
@@ -152,6 +154,8 @@ kein Web-Framework. Vier Komponenten mit klaren Schnittstellen:
 | `POST /api/jobs/{id}/cancel` | Laufenden/wartenden Job abbrechen |
 | `POST /api/jobs/{id}/retry` | Fehlgeschlagenen/abgebrochenen Job neu einreihen |
 | `DELETE /api/jobs/{id}` | Listeneintrag entfernen (Datei bleibt erhalten) |
+| `GET /api/settings` | Aktuelle Einstellungen lesen (Standard-Format-Profil) |
+| `PUT /api/settings` | Einstellungen aktualisieren, persistiert in `/config/settings.json` |
 | `GET /healthz` | Healthcheck |
 | `GET /` | Die Single-Page-UI |
 
@@ -159,11 +163,14 @@ kein Web-Framework. Vier Komponenten mit klaren Schnittstellen:
 
 Eine Seite, Bootstrap 5.3 (lokal eingebettet), Vanilla-JS mit `fetch`:
 
+0. **Kopfzeile:** Titel plus Zahnrad-Button, der eine Einstellungs-Card
+   ein-/ausblendet — dort wird das Standard-Format-Profil gewählt, das nach
+   jeder Analyse als Vorauswahl dient (persistiert in `/config/settings.json`).
 1. **Eingabe-Card:** URL-Feld + Button „Analysieren".
 2. **Auswahl-Card** (nach Probe):
-   - Einzelvideo: Titel + Thumbnail; Dropdown Videoformat (Auflösung, fps,
-     Codec, Größe), Dropdown Audioformat (Codec, Bitrate); Schnellwahl
-     „Beste Qualität"; Option „Nur Audio".
+   - Einzelvideo: Titel + Thumbnail; Modus „Profil" (Dropdown mit den
+     Qualitätsprofilen, voreingestellt), „Formate wählen" (Video-/Audioformat
+     einzeln) oder „Nur Audio".
    - Playlist: Titel, Anzahl Videos, Qualitätsprofil-Dropdown.
    - Button „Download starten".
 3. **Jobs-Card:** Tabelle mit Titel, Format, Status-Badge, Progressbar,

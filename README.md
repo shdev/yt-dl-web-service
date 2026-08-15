@@ -54,7 +54,10 @@ Before the first start, adjust `docker-compose.yml`:
 | Volume mount | Purpose |
 |---|---|
 | `/downloads` | Target directory for finished downloads |
-| `/config` | Persistent state: job queue (`jobs.json`) and the updated yt-dlp binary |
+| `/config` | Persistent state: job queue (`jobs.json`), in-app settings (`settings.json`) and the updated yt-dlp binary |
+
+In-app settings (gear icon) are stored in `/config/settings.json` — currently
+the default format profile preselected after each probe.
 
 ## How it works
 

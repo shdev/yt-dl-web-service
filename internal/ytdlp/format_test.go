@@ -34,10 +34,14 @@ func TestProfileByKey(t *testing.T) {
 	if !ok || p.Expr != "bv*[height<=1080]+ba/b[height<=1080]" {
 		t.Fatalf("1080p-Profil falsch: %+v (ok=%v)", p, ok)
 	}
+	mp4, ok := ytdlp.ProfileByKey("1080p-mp4")
+	if !ok || mp4.Expr != "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4][height<=1080]/b[height<=1080]" {
+		t.Fatalf("1080p-mp4-Profil falsch: %+v (ok=%v)", mp4, ok)
+	}
 	if _, ok := ytdlp.ProfileByKey("gibtsnicht"); ok {
 		t.Fatal("unbekannter Key muss ok=false liefern")
 	}
-	for _, key := range []string{"best", "1080p", "720p", "audio"} {
+	for _, key := range []string{"best", "1080p-mp4", "1080p", "720p", "audio"} {
 		if _, ok := ytdlp.ProfileByKey(key); !ok {
 			t.Fatalf("Profil %s fehlt", key)
 		}

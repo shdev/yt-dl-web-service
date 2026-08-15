@@ -18,6 +18,7 @@ import (
 	"ytdlweb/internal/config"
 	"ytdlweb/internal/queue"
 	"ytdlweb/internal/server"
+	"ytdlweb/internal/settings"
 	"ytdlweb/internal/store"
 	"ytdlweb/internal/ytdlp"
 )
@@ -63,6 +64,11 @@ func run(cfg config.Config) error {
 		return err
 	}
 
+	set, err := settings.Open(filepath.Join(cfg.ConfigDir, "settings.json"))
+	if err != nil {
+		return err
+	}
+
 	runner := &ytdlp.ExecRunner{
 		Bin:            bin,
 		DownloadDir:    cfg.DownloadDir,
@@ -77,7 +83,7 @@ func run(cfg config.Config) error {
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           server.New(st, q, &ytdlp.Prober{Bin: bin}),
+		Handler:           server.New(st, q, &ytdlp.Prober{Bin: bin}, set),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)

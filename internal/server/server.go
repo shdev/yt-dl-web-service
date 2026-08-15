@@ -12,6 +12,7 @@ import (
 
 	"ytdlweb/internal/job"
 	"ytdlweb/internal/queue"
+	"ytdlweb/internal/settings"
 	"ytdlweb/internal/store"
 	"ytdlweb/internal/ytdlp"
 	"ytdlweb/web"
@@ -25,12 +26,13 @@ type Server struct {
 	store     *store.Store
 	queue     *queue.Queue
 	prober    Prober
+	settings  *settings.Store
 	indexTmpl *template.Template
 }
 
-func New(st *store.Store, q *queue.Queue, p Prober) http.Handler {
+func New(st *store.Store, q *queue.Queue, p Prober, set *settings.Store) http.Handler {
 	tmpl := template.Must(template.ParseFS(web.FS, "templates/index.html"))
-	s := &Server{store: st, queue: q, prober: p, indexTmpl: tmpl}
+	s := &Server{store: st, queue: q, prober: p, settings: set, indexTmpl: tmpl}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.Handle("GET /static/", http.FileServerFS(web.FS))
@@ -41,6 +43,8 @@ func New(st *store.Store, q *queue.Queue, p Prober) http.Handler {
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleCancel)
 	mux.HandleFunc("POST /api/jobs/{id}/retry", s.handleRetry)
 	mux.HandleFunc("DELETE /api/jobs/{id}", s.handleDelete)
+	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
+	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	return mux
 }
 
@@ -127,10 +131,21 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 		writeError(w, http.StatusBadRequest, "url fehlt")
 		return
 	}
-	format := ytdlp.BuildFormat(req.FormatVideo, req.FormatAudio, req.AudioOnly)
-	label := req.FormatLabel
-	if label == "" {
-		label = format
+	var format, label string
+	if req.Profile != "" {
+		profile, ok := ytdlp.ProfileByKey(req.Profile)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "unbekanntes Profil")
+			return
+		}
+		format = profile.Expr
+		label = profile.Label
+	} else {
+		format = ytdlp.BuildFormat(req.FormatVideo, req.FormatAudio, req.AudioOnly)
+		label = req.FormatLabel
+		if label == "" {
+			label = format
+		}
 	}
 	if s.isDuplicate(url, format) {
 		writeError(w, http.StatusConflict, "Dieser Download läuft bereits")
@@ -235,6 +250,31 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.Remove(id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	set := s.settings.Get()
+	if _, ok := ytdlp.ProfileByKey(set.DefaultProfile); !ok {
+		set.DefaultProfile = "best"
+	}
+	writeJSON(w, http.StatusOK, set)
+}
+
+func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
+	var set settings.Settings
+	if err := json.NewDecoder(r.Body).Decode(&set); err != nil {
+		writeError(w, http.StatusBadRequest, "ungültiger Request-Body")
+		return
+	}
+	if _, ok := ytdlp.ProfileByKey(set.DefaultProfile); !ok {
+		writeError(w, http.StatusBadRequest, "unbekanntes Profil")
+		return
+	}
+	if err := s.settings.Set(set); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

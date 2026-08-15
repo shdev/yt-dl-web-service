@@ -30,6 +30,7 @@ type Profile struct {
 
 var Profiles = []Profile{
 	{Key: "best", Label: "Beste Qualität", Expr: "bv*+ba/b"},
+	{Key: "1080p-mp4", Label: "Beste ≤1080p (MP4/M4A)", Expr: "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4][height<=1080]/b[height<=1080]"},
 	{Key: "1080p", Label: "Beste ≤1080p", Expr: "bv*[height<=1080]+ba/b[height<=1080]"},
 	{Key: "720p", Label: "Beste ≤720p", Expr: "bv*[height<=720]+ba/b[height<=720]"},
 	{Key: "audio", Label: "Nur Audio", Expr: "ba"},

@@ -3,6 +3,7 @@
 const $ = (id) => document.getElementById(id);
 
 let probeResult = null;
+let currentSettings = { default_profile: "best" };
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -33,6 +34,34 @@ function humanSize(bytes) {
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(n >= 10 ? 0 : 1)} ${units[i]}`;
 }
+
+// --- Einstellungen -----------------------------------------------------------
+
+async function loadSettings() {
+  try {
+    const s = await api("/api/settings");
+    if (s && s.default_profile) currentSettings = s;
+  } catch { /* Defaults behalten */ }
+  $("default-profile").value = currentSettings.default_profile;
+}
+loadSettings();
+
+$("settings-btn").addEventListener("click", () => {
+  $("settings-card").classList.toggle("d-none");
+});
+
+$("default-profile").addEventListener("change", async () => {
+  const value = $("default-profile").value;
+  try {
+    await api("/api/settings", { method: "PUT", body: JSON.stringify({ default_profile: value }) });
+    currentSettings = { default_profile: value };
+    show($("settings-saved"));
+    setTimeout(() => hide($("settings-saved")), 1500);
+  } catch (err) {
+    alert(err.message);
+    $("default-profile").value = currentSettings.default_profile;
+  }
+});
 
 // --- Analyse ---------------------------------------------------------------
 
@@ -66,6 +95,7 @@ function renderSelectCard() {
     $("select-subtitle").textContent = `Playlist · ${pl.entries.length} Videos`;
     hide($("video-thumb"));
     hide($("video-options"));
+    $("profile-select").value = currentSettings.default_profile;
     show($("playlist-options"));
   } else {
     const v = probeResult.video;
@@ -78,6 +108,8 @@ function renderSelectCard() {
       hide($("video-thumb"));
     }
     fillFormatSelects(v.formats || []);
+    $("mode-profile").checked = true;
+    $("video-profile").value = currentSettings.default_profile;
     show($("video-options"));
     hide($("playlist-options"));
     updateModeVisibility();
@@ -115,14 +147,17 @@ function currentMode() {
 
 function updateModeVisibility() {
   const mode = currentMode();
-  if (mode === "manual") {
+  if (mode === "profile") {
+    show($("video-profile-wrap"));
+    hide($("format-selects"));
+  } else if (mode === "manual") {
+    hide($("video-profile-wrap"));
     show($("format-selects"));
     show($("video-col"));
   } else if (mode === "audio") {
+    hide($("video-profile-wrap"));
     show($("format-selects"));
     hide($("video-col"));
-  } else {
-    hide($("format-selects"));
   }
 }
 
@@ -151,18 +186,23 @@ async function start() {
       }
     } else {
       const mode = currentMode();
-      await api("/api/jobs", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "video",
-          url: $("url-input").value.trim(),
-          title: probeResult.video.title,
-          audio_only: mode === "audio",
-          format_video: mode === "manual" ? $("video-format").value : "",
-          format_audio: mode !== "best" ? $("audio-format").value : "",
-          format_label: formatLabel(mode),
-        }),
-      });
+      const payload = mode === "profile"
+        ? {
+            type: "video",
+            url: $("url-input").value.trim(),
+            title: probeResult.video.title,
+            profile: $("video-profile").value,
+          }
+        : {
+            type: "video",
+            url: $("url-input").value.trim(),
+            title: probeResult.video.title,
+            audio_only: mode === "audio",
+            format_video: mode === "manual" ? $("video-format").value : "",
+            format_audio: $("audio-format").value,
+            format_label: formatLabel(mode),
+          };
+      await api("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
       hide($("select-card"));
       $("url-input").value = "";
       await refreshJobs();
@@ -173,8 +213,9 @@ async function start() {
   }
 }
 
+// formatLabel wird nur für die Modi "manual" und "audio" gebraucht —
+// bei "profile" liefert der Server das Label zum gewählten Profil.
 function formatLabel(mode) {
-  if (mode === "best") return "Beste Qualität";
   const audioText = $("audio-format").selectedOptions[0]?.textContent.trim() || "beste";
   if (mode === "audio") return `Nur Audio (${audioText})`;
   const videoText = $("video-format").selectedOptions[0]?.textContent.trim() || "";

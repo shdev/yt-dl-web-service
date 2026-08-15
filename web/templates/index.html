@@ -8,7 +8,20 @@
 </head>
 <body>
   <div class="container py-4" style="max-width: 960px">
-    <h1 class="mb-4">yt-dl Web</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h1 class="mb-0">yt-dl Web</h1>
+      <button class="btn btn-outline-secondary" id="settings-btn" type="button" title="Einstellungen">⚙️</button>
+    </div>
+
+    <div class="card mb-4 d-none" id="settings-card">
+      <div class="card-body">
+        <label class="form-label" for="default-profile">Standard-Profil (Vorauswahl nach jeder Analyse)</label>
+        <select class="form-select" id="default-profile">
+          {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
+          {{end}}</select>
+        <div class="form-text d-none" id="settings-saved">Gespeichert ✓</div>
+      </div>
+    </div>
 
     <div class="card mb-4">
       <div class="card-body">
@@ -35,8 +48,8 @@
         <div id="video-options">
           <div class="mb-3">
             <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="mode" id="mode-best" value="best" checked>
-              <label class="form-check-label" for="mode-best">Beste Qualität</label>
+              <input class="form-check-input" type="radio" name="mode" id="mode-profile" value="profile" checked>
+              <label class="form-check-label" for="mode-profile">Profil</label>
             </div>
             <div class="form-check form-check-inline">
               <input class="form-check-input" type="radio" name="mode" id="mode-manual" value="manual">
@@ -46,6 +59,11 @@
               <input class="form-check-input" type="radio" name="mode" id="mode-audio" value="audio">
               <label class="form-check-label" for="mode-audio">Nur Audio</label>
             </div>
+          </div>
+          <div class="mb-3" id="video-profile-wrap">
+            <select class="form-select" id="video-profile">
+              {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
+              {{end}}</select>
           </div>
           <div class="row g-3 d-none" id="format-selects">
             <div class="col-md-6" id="video-col">

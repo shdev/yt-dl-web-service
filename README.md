@@ -76,7 +76,8 @@ Requires Go ≥ 1.23; there are no external Go dependencies.
 make check     # gofmt + go vet + tests
 make run       # run locally on :8080 (uses ./tmp as volume substitute;
                # real downloads need a yt-dlp binary at /usr/local/bin/yt-dlp)
-make image     # build the Docker image (amd64)
+make image         # build the Docker image for amd64 (NAS/publishing target)
+make image-native  # build for the host's own platform (no emulation — fast local builds)
 ```
 
 The design spec and implementation plan live in `docs/superpowers/`.

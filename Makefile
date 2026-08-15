@@ -4,7 +4,7 @@ IMAGE := yt-dl-web-service
 GHCR_USER ?= shdev
 TAG ?= latest
 
-.PHONY: build test check fmt-check vet run image push check-ghcr-user up down clean
+.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down clean
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY) ./cmd/server
@@ -27,6 +27,12 @@ run: build
 
 image:
 	docker build --platform linux/amd64 -t $(IMAGE) .
+
+# Image für die aktuelle Plattform des Hosts (z.B. arm64 auf Apple Silicon,
+# amd64 auf Linux-PCs) — schneller lokaler Build ohne Emulation.
+# Das Base-Image ist multi-arch (amd64, arm64, arm/v7).
+image-native:
+	docker build -t $(IMAGE) .
 
 # Manueller Push zur GitHub Container Registry (kein CI):
 #   make push [TAG=v1]            — Default-User: shdev

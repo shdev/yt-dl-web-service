@@ -83,14 +83,65 @@ The design spec and implementation plan live in `docs/superpowers/`.
 
 ## Using the prebuilt image (GHCR)
 
-Instead of building locally, the NAS can pull the published image. In
-`docker-compose.yml`, remove the `build: .` line and use:
+Instead of building locally, you can pull the published image — it is public,
+so no `docker login` is needed. Either way, create the two data directories
+first; they must be writable by the user you run the container as:
 
-```yaml
-    image: ghcr.io/shdev/yt-dl-web-service:latest
+```bash
+mkdir -p data/downloads data/config
 ```
 
-The package is public — no `docker login` is needed for pulling.
+### Plain `docker run` (no Compose)
+
+```bash
+docker run -d --name yt-dl-web \
+  --user 1000:1000 \
+  -p 8080:8080 \
+  -e MAX_CONCURRENT=3 \
+  -e YTDLP_UPDATE_ON_START=true \
+  -v "$PWD/data/downloads:/downloads" \
+  -v "$PWD/data/config:/config" \
+  --restart unless-stopped \
+  ghcr.io/shdev/yt-dl-web-service:latest
+```
+
+Then open `http://<your-host>:8080`. Update later with:
+
+```bash
+docker pull ghcr.io/shdev/yt-dl-web-service:latest
+docker stop yt-dl-web && docker rm yt-dl-web
+# ... then run the docker run command above again
+```
+
+### Docker Compose
+
+Standalone `docker-compose.yml` (no repository checkout needed):
+
+```yaml
+services:
+  yt-dl-web:
+    image: ghcr.io/shdev/yt-dl-web-service:latest
+    container_name: yt-dl-web
+    # UID:GID that should own the downloaded files
+    user: "1000:1000"
+    ports:
+      - "8080:8080"
+    environment:
+      MAX_CONCURRENT: "3"
+      YTDLP_UPDATE_ON_START: "true"
+    volumes:
+      - ./data/downloads:/downloads
+      - ./data/config:/config
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d                      # start
+docker compose pull && docker compose up -d   # update to the latest image
+```
+
+(The `docker-compose.yml` in this repository builds the image locally instead —
+that variant is meant for development; see Quick start.)
 
 ## Publishing the image (maintainers)
 

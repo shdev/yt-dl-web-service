@@ -2913,6 +2913,7 @@ func (s *Server) createPlaylistJobs(w http.ResponseWriter, req createJobsRequest
 		}
 		j := job.New(url, e.Title, profile.Expr, profile.Label, req.PlaylistTitle)
 		if err := s.store.Add(j); err != nil {
+			s.queue.Kick() // bereits angelegte Jobs nicht stranden lassen
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

@@ -75,12 +75,13 @@ func (q *Queue) dispatch(ctx context.Context) {
 		q.mu.Lock()
 		q.cancels[j.ID] = cancel
 		q.mu.Unlock()
-		go q.runJob(jobCtx, j)
+		go q.runJob(jobCtx, cancel, j)
 	}
 }
 
-func (q *Queue) runJob(ctx context.Context, j job.Job) {
+func (q *Queue) runJob(ctx context.Context, cancel context.CancelFunc, j job.Job) {
 	defer func() {
+		cancel()
 		q.mu.Lock()
 		delete(q.cancels, j.ID)
 		q.mu.Unlock()

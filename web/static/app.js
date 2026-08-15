@@ -19,9 +19,10 @@ function show(el) { el.classList.remove("d-none"); }
 function hide(el) { el.classList.add("d-none"); }
 
 function esc(s) {
-  const div = document.createElement("div");
-  div.textContent = s ?? "";
-  return div.innerHTML;
+  // Escapt auch Quotes — der Wert landet teils in Attribut-Kontexten.
+  return String(s ?? "").replace(/[&<>"'`]/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;",
+  }[c]));
 }
 
 function humanSize(bytes) {
@@ -195,7 +196,7 @@ async function refreshJobs() {
 
 function renderJobs(jobs) {
   $("jobs-tbody").innerHTML = jobs.map((j) => {
-    const [badge, label] = STATE_BADGES[j.state] || ["text-bg-secondary", j.state];
+    const [badge, label] = STATE_BADGES[j.state] || ["text-bg-secondary", esc(j.state)];
     const pct = Math.round(j.progress?.percent || 0);
     let title = esc(j.title || j.url);
     if (j.playlist_title) {

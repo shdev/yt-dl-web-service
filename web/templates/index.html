@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>yt-dl Web</title>
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
+</head>
+<body>
+  <div class="container py-4" style="max-width: 960px">
+    <h1 class="mb-4">yt-dl Web</h1>
+
+    <div class="card mb-4">
+      <div class="card-body">
+        <label for="url-input" class="form-label">Video- oder Playlist-URL</label>
+        <div class="input-group">
+          <input type="url" class="form-control" id="url-input" placeholder="https://…" autofocus>
+          <button class="btn btn-primary" id="probe-btn">Analysieren</button>
+        </div>
+        <div class="alert alert-danger mt-3 d-none" id="probe-error"></div>
+      </div>
+    </div>
+
+    <div class="card mb-4 d-none" id="select-card">
+      <div class="card-body">
+        <div class="d-flex gap-3 mb-3">
+          <img id="video-thumb" src="" alt="" class="rounded d-none"
+               style="width:160px;height:auto;object-fit:cover">
+          <div>
+            <h5 id="select-title" class="mb-1"></h5>
+            <div id="select-subtitle" class="text-body-secondary"></div>
+          </div>
+        </div>
+
+        <div id="video-options">
+          <div class="mb-3">
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="mode" id="mode-best" value="best" checked>
+              <label class="form-check-label" for="mode-best">Beste Qualität</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="mode" id="mode-manual" value="manual">
+              <label class="form-check-label" for="mode-manual">Formate wählen</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="mode" id="mode-audio" value="audio">
+              <label class="form-check-label" for="mode-audio">Nur Audio</label>
+            </div>
+          </div>
+          <div class="row g-3 d-none" id="format-selects">
+            <div class="col-md-6" id="video-col">
+              <label class="form-label" for="video-format">Videoformat</label>
+              <select class="form-select" id="video-format"></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="audio-format">Audioformat</label>
+              <select class="form-select" id="audio-format"></select>
+            </div>
+          </div>
+        </div>
+
+        <div id="playlist-options" class="d-none">
+          <label class="form-label" for="profile-select">Qualitätsprofil</label>
+          <select class="form-select" id="profile-select">
+            <option value="best">Beste Qualität</option>
+            <option value="1080p">Beste ≤1080p</option>
+            <option value="720p">Beste ≤720p</option>
+            <option value="audio">Nur Audio</option>
+          </select>
+        </div>
+
+        <button class="btn btn-success mt-3" id="start-btn">Download starten</button>
+        <div class="alert alert-danger mt-3 d-none" id="start-error"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Downloads</div>
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Titel</th>
+              <th>Format</th>
+              <th>Status</th>
+              <th style="min-width:160px">Fortschritt</th>
+              <th>Tempo</th>
+              <th>ETA</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="jobs-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script src="/static/bootstrap.bundle.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

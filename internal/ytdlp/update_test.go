@@ -104,6 +104,21 @@ esac; exit 1`)
 	}
 }
 
+// Schlägt nach erfolgreichem -U nur die Versionsabfrage fehl, muss der
+// Fehler den Update-Erfolg kenntlich machen (Review-Finding: sonst wirkt
+// ein angewendetes Update wie ein fehlgeschlagenes).
+func TestManagerUpdateVersionFailureIsMarked(t *testing.T) {
+	bin := writeScript(t, `case "$1" in
+-U) exit 0;;
+--version) echo "neues Binary startet nicht" >&2; exit 1;;
+esac; exit 1`)
+	m := &ytdlp.Manager{Bin: bin}
+	_, err := m.Update(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "Update angewendet") {
+		t.Fatalf("Fehler muss den Update-Erfolg kennzeichnen, war: %v", err)
+	}
+}
+
 func TestManagerUpdateFailure(t *testing.T) {
 	bin := writeScript(t, `echo "ERROR: unable to update" >&2; exit 1`)
 	m := &ytdlp.Manager{Bin: bin}

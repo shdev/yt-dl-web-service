@@ -53,34 +53,45 @@ $("settings-btn").addEventListener("click", () => {
 
 // --- yt-dlp-Version & Update -----------------------------------------------
 
-let ytdlpVersionLoaded = false;
+// Sequenznummer statt Cache: jedes Panel-Öffnen lädt frisch (yt-dlp kann
+// anderweitig aktualisiert worden sein), und eine verspätete Antwort eines
+// älteren Fetches darf eine neuere Anzeige nicht mehr überschreiben.
+let ytdlpVersionSeq = 0;
 
 async function loadYtdlpVersion() {
-  if (ytdlpVersionLoaded) return;
+  const seq = ++ytdlpVersionSeq;
   try {
     const res = await api("/api/ytdlp");
+    if (seq !== ytdlpVersionSeq) return;
     $("ytdlp-version").textContent = res.version;
-    ytdlpVersionLoaded = true;
-  } catch {
+  } catch (err) {
+    if (seq !== ytdlpVersionSeq) return;
     $("ytdlp-version").textContent = "unbekannt";
+    const status = $("ytdlp-update-status");
+    status.classList.add("text-danger");
+    status.textContent = `Versionsabfrage fehlgeschlagen: ${err.message}`;
+    show(status);
+    console.error(err);
   }
 }
 
 $("ytdlp-update-btn").addEventListener("click", async () => {
   const btn = $("ytdlp-update-btn");
   const status = $("ytdlp-update-status");
+  ytdlpVersionSeq++; // laufende Versions-Fetches invalidieren
   btn.disabled = true;
   status.classList.remove("text-danger");
   status.textContent = "Update läuft — das kann eine Minute dauern…";
   show(status);
   try {
     const res = await api("/api/ytdlp/update", { method: "POST" });
+    ytdlpVersionSeq++;
     $("ytdlp-version").textContent = res.version;
-    ytdlpVersionLoaded = true;
     status.textContent = `Aktuell: ${res.version} ✓`;
   } catch (err) {
     status.classList.add("text-danger");
     status.textContent = err.message;
+    console.error(err);
   } finally {
     btn.disabled = false;
   }
@@ -291,7 +302,7 @@ function renderJobs(jobs) {
     // yt-dlp veraltet ist — direkt zur Abhilfe verlinken.
     if (j.error && /HTTP Error 403|403: Forbidden/i.test(j.error)) {
       errorHTML += `<div class="small text-body-secondary">Tipp: yt-dlp über ⚙️ →
-        „Jetzt aktualisieren" auf den neuesten Stand bringen und den Job erneut starten.</div>`;
+        „Jetzt aktualisieren“ auf den neuesten Stand bringen und den Job erneut starten.</div>`;
     }
     const animated = j.state === "running" ? " progress-bar-striped progress-bar-animated" : "";
     return `<tr>

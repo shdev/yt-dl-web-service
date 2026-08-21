@@ -159,6 +159,32 @@ func TestYtdlpUpdateRunningBecomes409(t *testing.T) {
 	}
 }
 
+// ctxCheckYtdlp meldet Erfolg nur, wenn der übergebene Context noch lebt —
+// so lässt sich prüfen, dass das Update vom Request-Context entkoppelt ist.
+type ctxCheckYtdlp struct{}
+
+func (ctxCheckYtdlp) Version(ctx context.Context) (string, error) { return "", ctx.Err() }
+func (ctxCheckYtdlp) Update(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return "2026.08.19", nil
+}
+
+// Ein Client-Abbruch (Tab zu, Reload, Proxy-Timeout) darf ein laufendes
+// Update nicht mehr killen (Review-Finding).
+func TestYtdlpUpdateSurvivesClientDisconnect(t *testing.T) {
+	h, _, _ := newServerYtdlp(t, fakeProber{}, ctxCheckYtdlp{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Request-Context ist bereits abgebrochen
+	req := httptest.NewRequest("POST", "/api/ytdlp/update", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"version":"2026.08.19"`) {
+		t.Fatalf("Update muss Client-Abbruch überleben, Code %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestYtdlpUpdateErrorBecomes502(t *testing.T) {
 	h, _, _ := newServerYtdlp(t, fakeProber{}, fakeYtdlp{uerr: errors.New("yt-dlp -U: exit 1")})
 	rec := do(t, h, "POST", "/api/ytdlp/update", nil)

@@ -75,8 +75,9 @@ restart with `YTDLP_UPDATE_ON_START=true` does the same on startup.
 
 **`No supported JavaScript runtime could be found` (warning in logs)** —
 current yt-dlp needs a JS runtime (deno) for YouTube. Images built from this
-repository since the deno stage was added include it; rebuild/pull the image
-if you still see the warning.
+repository since the deno stage was added include it on amd64 and arm64;
+rebuild/pull the image if you still see the warning. On arm/v7 there is no
+deno release — the build skips it and the warning remains.
 
 ## How it works
 

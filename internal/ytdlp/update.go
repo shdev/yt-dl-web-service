@@ -67,7 +67,15 @@ func (m *Manager) Update(ctx context.Context) (string, error) {
 	if out, err := exec.CommandContext(ctx, m.Bin, "-U").CombinedOutput(); err != nil {
 		return "", fmt.Errorf("yt-dlp -U: %w: %s", err, tailString(string(out), 300))
 	}
-	return m.Version(ctx)
+	// Eigenes Budget für die Nachabfrage: der Update-Erfolg darf nicht an
+	// einer durch -U fast aufgebrauchten Deadline scheitern.
+	verCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancel()
+	v, err := m.Version(verCtx)
+	if err != nil {
+		return "", fmt.Errorf("Update angewendet, aber Version nicht ermittelbar: %w", err)
+	}
+	return v, nil
 }
 
 func copyBinary(src, dst string) error {

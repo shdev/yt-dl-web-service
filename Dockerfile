@@ -9,16 +9,22 @@ RUN CGO_ENABLED=0 go build -o /app ./cmd/server
 # bringt keine mit. Kein deno-Build für arm/v7 — dort wird der Schritt
 # übersprungen statt den Build zu brechen.
 FROM debian:stable-slim AS deno
+# TARGETARCH füllt nur BuildKit — mit dem Legacy-Builder wäre die Variable
+# leer und deno fiele still weg; dpkg liefert dann die Host-Architektur.
 ARG TARGETARCH
+# Gepinnt statt releases/latest: reproduzierbare Builds, und ein Versions-
+# bump invalidiert den Docker-Layer-Cache automatisch.
+ARG DENO_VERSION=v2.9.5
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip \
  && mkdir -p /out \
- && case "$TARGETARCH" in \
+ && target="${TARGETARCH:-$(dpkg --print-architecture)}" \
+ && case "$target" in \
       amd64) arch=x86_64-unknown-linux-gnu ;; \
       arm64) arch=aarch64-unknown-linux-gnu ;; \
-      *) echo "WARNUNG: kein deno-Build für $TARGETARCH — YouTube ggf. eingeschränkt" >&2; arch= ;; \
+      *) echo "WARNUNG: kein deno-Build für $target — YouTube ggf. eingeschränkt" >&2; arch= ;; \
     esac \
  && if [ -n "$arch" ]; then \
-      curl -fsSL "https://github.com/denoland/deno/releases/latest/download/deno-${arch}.zip" \
+      curl -fsSL "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-${arch}.zip" \
         -o /tmp/deno.zip \
       && unzip -q /tmp/deno.zip -d /out \
       && chmod +x /out/deno; \

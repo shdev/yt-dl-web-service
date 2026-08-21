@@ -279,7 +279,9 @@ func (s *Server) handleYtdlpVersion(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleYtdlpUpdate(w http.ResponseWriter, r *http.Request) {
 	// Großzügiges Timeout: -U lädt das komplette Binary neu herunter.
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	// Vom Request-Context entkoppelt: ein Tab-Reload oder Proxy-Timeout
+	// darf ein einmal angestoßenes Update nicht mehr abbrechen.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 3*time.Minute)
 	defer cancel()
 	v, err := s.ytdlp.Update(ctx)
 	if errors.Is(err, ytdlp.ErrUpdateRunning) {
@@ -287,9 +289,13 @@ func (s *Server) handleYtdlpUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		// Auch serverseitig festhalten — die Antwort erreicht den Client
+		// nach einem Abbruch sonst nie.
+		log.Printf("yt-dlp-Update fehlgeschlagen: %v", err)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	log.Printf("yt-dlp aktualisiert: %s", v)
 	writeJSON(w, http.StatusOK, map[string]string{"version": v})
 }
 

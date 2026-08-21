@@ -15,7 +15,10 @@ land directly in a mounted folder (e.g. your media library).
 - Persistent job queue: survives container restarts, interrupted downloads resume (`--continue`)
 - Retry, cancel and remove jobs from the UI (removing a job never deletes files)
 - Single container: one Go binary with an embedded Bootstrap UI, no CDN, UI works offline
-- Optional yt-dlp self-update on container start
+- Optional yt-dlp self-update on container start — plus a one-click update
+  button in the UI (gear icon), no container restart needed
+- Ships deno as JavaScript runtime — required by current yt-dlp for YouTube
+  (JS challenges; without it, formats go missing or downloads fail)
 
 ## Quick start
 
@@ -57,7 +60,23 @@ Before the first start, adjust `docker-compose.yml`:
 | `/config` | Persistent state: job queue (`jobs.json`), in-app settings (`settings.json`) and the updated yt-dlp binary |
 
 In-app settings (gear icon) are stored in `/config/settings.json` — currently
-the default format profile preselected after each probe.
+the default format profile preselected after each probe. The gear panel also
+shows the installed yt-dlp version and offers a one-click update
+(`POST /api/ytdlp/update` runs `yt-dlp -U` on the writable copy in `/config/bin`).
+
+## Troubleshooting
+
+**`ERROR: unable to download video data: HTTP Error 403: Forbidden` (YouTube)**
+— almost always an outdated yt-dlp; YouTube changes frequently and yt-dlp
+follows with new releases (e.g. [yt-dlp#17456](https://github.com/yt-dlp/yt-dlp/issues/17456),
+fixed in 2026.08.19 by removing the `android_vr` client from the defaults).
+Fix: gear icon → "Jetzt aktualisieren", then retry the failed job. A container
+restart with `YTDLP_UPDATE_ON_START=true` does the same on startup.
+
+**`No supported JavaScript runtime could be found` (warning in logs)** —
+current yt-dlp needs a JS runtime (deno) for YouTube. Images built from this
+repository since the deno stage was added include it; rebuild/pull the image
+if you still see the warning.
 
 ## How it works
 
@@ -69,7 +88,8 @@ the default format profile preselected after each probe.
   resume from their `.part` files.
 - The UI (Bootstrap 5, vanilla JS, German) polls `/api/jobs` every 1.5 s.
 - The Docker image is based on `mikenye/youtube-dl` (ships yt-dlp + ffmpeg),
-  built for amd64.
+  built for amd64, with deno added on top (amd64/arm64) as the JS runtime
+  yt-dlp needs for YouTube.
 
 ## Development
 

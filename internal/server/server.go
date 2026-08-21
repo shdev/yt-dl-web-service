@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"log"
 	"net/http"
@@ -22,17 +23,24 @@ type Prober interface {
 	Probe(ctx context.Context, url string) (*ytdlp.ProbeResult, error)
 }
 
+// Ytdlp liefert Version und Selfupdate der yt-dlp-Installation (ytdlp.Manager).
+type Ytdlp interface {
+	Version(ctx context.Context) (string, error)
+	Update(ctx context.Context) (string, error)
+}
+
 type Server struct {
 	store     *store.Store
 	queue     *queue.Queue
 	prober    Prober
 	settings  *settings.Store
+	ytdlp     Ytdlp
 	indexTmpl *template.Template
 }
 
-func New(st *store.Store, q *queue.Queue, p Prober, set *settings.Store) http.Handler {
+func New(st *store.Store, q *queue.Queue, p Prober, set *settings.Store, y Ytdlp) http.Handler {
 	tmpl := template.Must(template.ParseFS(web.FS, "templates/index.html"))
-	s := &Server{store: st, queue: q, prober: p, settings: set, indexTmpl: tmpl}
+	s := &Server{store: st, queue: q, prober: p, settings: set, ytdlp: y, indexTmpl: tmpl}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.Handle("GET /static/", http.FileServerFS(web.FS))
@@ -45,6 +53,8 @@ func New(st *store.Store, q *queue.Queue, p Prober, set *settings.Store) http.Ha
 	mux.HandleFunc("DELETE /api/jobs/{id}", s.handleDelete)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
+	mux.HandleFunc("GET /api/ytdlp", s.handleYtdlpVersion)
+	mux.HandleFunc("POST /api/ytdlp/update", s.handleYtdlpUpdate)
 	return mux
 }
 
@@ -254,6 +264,33 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleYtdlpVersion(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	v, err := s.ytdlp.Version(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"version": v})
+}
+
+func (s *Server) handleYtdlpUpdate(w http.ResponseWriter, r *http.Request) {
+	// Großzügiges Timeout: -U lädt das komplette Binary neu herunter.
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	v, err := s.ytdlp.Update(ctx)
+	if errors.Is(err, ytdlp.ErrUpdateRunning) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"version": v})
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {

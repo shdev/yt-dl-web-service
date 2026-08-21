@@ -33,8 +33,23 @@ func (f fakeProber) Probe(context.Context, string) (*ytdlp.ProbeResult, error) {
 	return f.res, f.err
 }
 
+type fakeYtdlp struct {
+	version string
+	verr    error
+	updated string
+	uerr    error
+}
+
+func (f fakeYtdlp) Version(context.Context) (string, error) { return f.version, f.verr }
+func (f fakeYtdlp) Update(context.Context) (string, error)  { return f.updated, f.uerr }
+
 // newServer baut den Handler mit nicht gestarteter Queue — Jobs bleiben queued.
 func newServer(t *testing.T, p server.Prober) (http.Handler, *store.Store, *settings.Store) {
+	t.Helper()
+	return newServerYtdlp(t, p, fakeYtdlp{version: "2026.08.19"})
+}
+
+func newServerYtdlp(t *testing.T, p server.Prober, y server.Ytdlp) (http.Handler, *store.Store, *settings.Store) {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "jobs.json"))
 	if err != nil {
@@ -45,7 +60,7 @@ func newServer(t *testing.T, p server.Prober) (http.Handler, *store.Store, *sett
 		t.Fatal(err)
 	}
 	q := queue.New(st, nopRunner{}, 1)
-	return server.New(st, q, p, set), st, set
+	return server.New(st, q, p, set, y), st, set
 }
 
 func do(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
@@ -106,6 +121,46 @@ func TestIndexAndStatic(t *testing.T) {
 	rec = do(t, h, "GET", "/static/app.js", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Static-Route: %d", rec.Code)
+	}
+}
+
+func TestYtdlpVersion(t *testing.T) {
+	h, _, _ := newServerYtdlp(t, fakeProber{}, fakeYtdlp{version: "2026.08.19"})
+	rec := do(t, h, "GET", "/api/ytdlp", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"version":"2026.08.19"`) {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestYtdlpVersionErrorBecomes502(t *testing.T) {
+	h, _, _ := newServerYtdlp(t, fakeProber{}, fakeYtdlp{verr: errors.New("exec kaputt")})
+	rec := do(t, h, "GET", "/api/ytdlp", nil)
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "exec kaputt") {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestYtdlpUpdate(t *testing.T) {
+	h, _, _ := newServerYtdlp(t, fakeProber{}, fakeYtdlp{updated: "2026.08.19"})
+	rec := do(t, h, "POST", "/api/ytdlp/update", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"version":"2026.08.19"`) {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestYtdlpUpdateRunningBecomes409(t *testing.T) {
+	h, _, _ := newServerYtdlp(t, fakeProber{}, fakeYtdlp{uerr: ytdlp.ErrUpdateRunning})
+	rec := do(t, h, "POST", "/api/ytdlp/update", nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestYtdlpUpdateErrorBecomes502(t *testing.T) {
+	h, _, _ := newServerYtdlp(t, fakeProber{}, fakeYtdlp{uerr: errors.New("yt-dlp -U: exit 1")})
+	rec := do(t, h, "POST", "/api/ytdlp/update", nil)
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "exit 1") {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -360,7 +415,7 @@ func TestGetSettingsNormalizesUnknownProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := server.New(st, queue.New(st, nopRunner{}, 1), fakeProber{}, set)
+	h := server.New(st, queue.New(st, nopRunner{}, 1), fakeProber{}, set, fakeYtdlp{})
 	rec := do(t, h, "GET", "/api/settings", nil)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"default_profile":"best"`) {
 		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())

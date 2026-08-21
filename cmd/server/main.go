@@ -83,7 +83,7 @@ func run(cfg config.Config) error {
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           server.New(st, q, &ytdlp.Prober{Bin: bin}, set),
+		Handler:           server.New(st, q, &ytdlp.Prober{Bin: bin}, set, &ytdlp.Manager{Bin: bin}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)

@@ -20,6 +20,12 @@
           {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
           {{end}}</select>
         <div class="form-text d-none" id="settings-saved">Gespeichert ✓</div>
+        <hr>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span>yt-dlp-Version: <code id="ytdlp-version">…</code></span>
+          <button class="btn btn-sm btn-outline-primary" id="ytdlp-update-btn" type="button">Jetzt aktualisieren</button>
+        </div>
+        <div class="form-text d-none" id="ytdlp-update-status"></div>
       </div>
     </div>
 

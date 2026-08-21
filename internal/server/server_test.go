@@ -118,6 +118,9 @@ func TestIndexAndStatic(t *testing.T) {
 		!strings.Contains(body, `value="1080p-mp4"`) {
 		t.Fatalf("Settings-UI fehlt im gerenderten Index: %s", body)
 	}
+	if !strings.Contains(body, `id="ytdlp-version"`) || !strings.Contains(body, `id="ytdlp-update-btn"`) {
+		t.Fatalf("yt-dlp-Update-UI fehlt im gerenderten Index: %s", body)
+	}
 	rec = do(t, h, "GET", "/static/app.js", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Static-Route: %d", rec.Code)

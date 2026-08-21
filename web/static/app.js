@@ -48,6 +48,42 @@ loadSettings();
 
 $("settings-btn").addEventListener("click", () => {
   $("settings-card").classList.toggle("d-none");
+  if (!$("settings-card").classList.contains("d-none")) loadYtdlpVersion();
+});
+
+// --- yt-dlp-Version & Update -----------------------------------------------
+
+let ytdlpVersionLoaded = false;
+
+async function loadYtdlpVersion() {
+  if (ytdlpVersionLoaded) return;
+  try {
+    const res = await api("/api/ytdlp");
+    $("ytdlp-version").textContent = res.version;
+    ytdlpVersionLoaded = true;
+  } catch {
+    $("ytdlp-version").textContent = "unbekannt";
+  }
+}
+
+$("ytdlp-update-btn").addEventListener("click", async () => {
+  const btn = $("ytdlp-update-btn");
+  const status = $("ytdlp-update-status");
+  btn.disabled = true;
+  status.classList.remove("text-danger");
+  status.textContent = "Update läuft — das kann eine Minute dauern…";
+  show(status);
+  try {
+    const res = await api("/api/ytdlp/update", { method: "POST" });
+    $("ytdlp-version").textContent = res.version;
+    ytdlpVersionLoaded = true;
+    status.textContent = `Aktuell: ${res.version} ✓`;
+  } catch (err) {
+    status.classList.add("text-danger");
+    status.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 $("default-profile").addEventListener("change", async () => {
@@ -249,8 +285,14 @@ function renderJobs(jobs) {
     if (j.playlist_title) {
       title += ` <small class="text-body-secondary">(${esc(j.playlist_title)})</small>`;
     }
-    const errorHTML = j.error
+    let errorHTML = j.error
       ? `<div class="small text-danger">${esc(j.error)}</div>` : "";
+    // Bekanntes Muster (z.B. yt-dlp#17456): 403 heißt fast immer, dass
+    // yt-dlp veraltet ist — direkt zur Abhilfe verlinken.
+    if (j.error && /HTTP Error 403|403: Forbidden/i.test(j.error)) {
+      errorHTML += `<div class="small text-body-secondary">Tipp: yt-dlp über ⚙️ →
+        „Jetzt aktualisieren" auf den neuesten Stand bringen und den Job erneut starten.</div>`;
+    }
     const animated = j.state === "running" ? " progress-bar-striped progress-bar-animated" : "";
     return `<tr>
       <td>${title}${errorHTML}</td>

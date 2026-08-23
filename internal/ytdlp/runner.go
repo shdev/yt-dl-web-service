@@ -33,6 +33,9 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 		"-f", j.Format,
 		"-o", filepath.Join(r.DownloadDir, r.OutputTemplate),
 		"--newline",
+		// --print impliziert bei yt-dlp --quiet und unterdrückt sonst die
+		// --progress-template-Ausgabe komplett (Regression vom 2026-08-23).
+		"--progress",
 		"--progress-template", ProgressTemplate,
 		"--continue",
 		"--no-playlist",

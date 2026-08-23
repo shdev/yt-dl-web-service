@@ -81,8 +81,14 @@ func TestExecRunnerArgsAlwaysPrintFilepath(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := readArgs(t, argsFile)
+	if !containsSeq(args, "--progress") {
+		t.Fatalf("--progress fehlt in Argumenten: %v", args)
+	}
 	if !containsSeq(args, "--print", "after_move:filepath") {
 		t.Fatalf("--print after_move:filepath fehlt in Argumenten: %v", args)
+	}
+	if indexOf(args, "--progress") > indexOf(args, "--print") {
+		t.Fatalf("--progress muss vor --print stehen, sonst unterdrückt --print via implizitem --quiet die Progress-Ausgabe: %v", args)
 	}
 	if containsAny(args, "--audio-multistreams", "--merge-output-format") {
 		t.Fatalf("Multistream-Flags dürfen ohne MultiAudio nicht gesetzt sein: %v", args)
@@ -234,6 +240,15 @@ func containsSeq(args []string, seq ...string) bool {
 		}
 	}
 	return false
+}
+
+func indexOf(args []string, val string) int {
+	for i, a := range args {
+		if a == val {
+			return i
+		}
+	}
+	return -1
 }
 
 func containsAny(args []string, vals ...string) bool {

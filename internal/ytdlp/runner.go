@@ -21,10 +21,15 @@ type ExecRunner struct {
 	Bin            string
 	DownloadDir    string
 	OutputTemplate string
+
+	// OnFilename wird mit dem relativen (zu DownloadDir) Pfad der final
+	// heruntergeladenen Datei aufgerufen, sobald yt-dlp ihn via
+	// --print after_move:filepath meldet. Optional — nil ist erlaubt.
+	OnFilename func(rel string)
 }
 
 func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Progress)) error {
-	cmd := exec.CommandContext(ctx, r.Bin,
+	args := []string{
 		"-f", j.Format,
 		"-o", filepath.Join(r.DownloadDir, r.OutputTemplate),
 		"--newline",
@@ -32,8 +37,13 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 		"--continue",
 		"--no-playlist",
 		"--no-warnings",
-		"--", j.URL,
-	)
+		"--print", "after_move:filepath",
+	}
+	if j.MultiAudio {
+		args = append(args, "--audio-multistreams", "--merge-output-format", "mp4/mkv")
+	}
+	args = append(args, "--", j.URL)
+	cmd := exec.CommandContext(ctx, r.Bin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
@@ -49,9 +59,25 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	// absDownloadDir dient dazu, die after_move:filepath-Zeile unter den
+	// stdout-Zeilen zu erkennen: yt-dlp gibt dort den absoluten Zielpfad
+	// aus, alles andere ist Progress-Template-Output.
+	absDownloadDir, absErr := filepath.Abs(r.DownloadDir)
+	if absErr != nil {
+		absDownloadDir = r.DownloadDir
+	}
 	sc := bufio.NewScanner(stdout)
 	for sc.Scan() {
-		if p, ok := ParseProgress(sc.Text()); ok {
+		line := sc.Text()
+		if strings.HasPrefix(line, absDownloadDir+string(filepath.Separator)) {
+			if r.OnFilename != nil {
+				if rel, relErr := filepath.Rel(absDownloadDir, line); relErr == nil {
+					r.OnFilename(rel)
+				}
+			}
+			continue
+		}
+		if p, ok := ParseProgress(line); ok {
 			onProgress(p)
 		}
 	}

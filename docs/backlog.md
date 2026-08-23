@@ -66,3 +66,46 @@ Extractors für beide (`instagram/`, `facebook/`), Short-/Teil-Domains wie
 Facebook-Seite). Zu verifizieren bei der Umsetzung: wie die Felder bei
 beiden konkret gefüllt sind (Login-/Cookie-Pflicht bei Instagram kann
 Metadaten beeinflussen).
+
+## 3. Mehrsprachige Audios: Sprachwahl + kluge Defaults
+
+**Idee (2026-08-23):** Manche Videos haben mehrere Audiospuren — echte
+Mehrsprachigkeit (z. B. ARTE: Deutsch, Französisch, Englisch-Original,
+Audiodeskriptions-Varianten) oder Auto-Dubs (YouTube: „dubbed-auto“ in
+vielen Sprachen plus „original (default)“). Gewünscht:
+
+1. **UI-Auswahl:** Bei Multi-Language-Videos eine Auswahl anbieten, welche
+   Sprache(n) heruntergeladen werden.
+2. **Default-Regel (gilt für alle Videos):** Immer die Original-Version
+   bevorzugen. Sprachordnung de vor en — ein deutsches Original schlägt ein
+   englisches Original. Dubbed-Versionen sind zweitrangig (dort dieselbe
+   Ordnung de vor en). Alle anderen Sprachen können ignoriert werden.
+   Ergibt als Rangfolge: original-de > original-en > dubbed-de > dubbed-en.
+
+**Ausgangslage (Kurz-Recherche):**
+
+- Der Probe-Parser (`internal/ytdlp/probe.go`) reicht `language`/
+  `language_preference` heute **nicht** durch — die UI kann Sprachen weder
+  anzeigen noch auswählen. Felder ergänzen ist klein.
+- Die Format-Labels im „Formate wählen“-Audio-Select müssten die Sprache
+  zeigen (z. B. „[de] Original · opus · 129 kbit/s“).
+- Profile nutzen `ba` ohne Sprachlogik; yt-dlp wählt dann nach eigener
+  Präferenz. Werkzeuge für die Default-Regel: Selektor-Filter wie
+  `ba[language^=de]` (Prefix-Match wegen de-DE), Fallback-Ketten mit `/`,
+  Format-Sortierung `-S lang`, Original-Erkennung über `format_note`
+  („original“) bzw. `language_preference`. Genaue Mechanik pro Extractor
+  (ARTE vs. YouTube kodieren Original/Dub unterschiedlich) beim Planen
+  verifizieren.
+
+**Offene Fragen für die Planung:**
+
+- Klarstellung der Regel am ARTE-Beispiel: Dort ist das Original Englisch,
+  Deutsch ist Synchro. Strikt „Original zuerst“ ⇒ englisches Original vor
+  deutscher Synchro. Gewollt? Oder de-Synchro vor fremdsprachigem Original?
+- Audiodeskription (ARTE „Deutsch (Audiodeskription)“) darf trotz „de“
+  nicht vor normalem Deutsch/Original landen — explizit abwerten.
+- Mehrere Sprachen gleichzeitig: getrennte Dateien oder eine Datei mit
+  mehreren Tonspuren (`--audio-multistreams`, erzwingt i. d. R. mkv)?
+- Gilt die Sprachauswahl auch für Playlist-Profile oder nur für
+  Einzelvideos mit Formatwahl?
+- Untertitel gleich mitdenken (gleiche Sprachlogik) oder bewusst außen vor?

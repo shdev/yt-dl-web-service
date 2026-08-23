@@ -240,6 +240,8 @@ func (s *Server) handleRetry(w http.ResponseWriter, r *http.Request) {
 		x.State = job.StateQueued
 		x.Error = ""
 		x.Progress = job.Progress{}
+		x.FinishedAt = nil
+		x.Filename = ""
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

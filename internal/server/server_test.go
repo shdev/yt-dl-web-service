@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"ytdlweb/internal/job"
 	"ytdlweb/internal/queue"
@@ -339,10 +340,13 @@ func TestRetryJob(t *testing.T) {
 	h, st, _ := newServer(t, fakeProber{})
 	j := job.New("https://example.com/v", "Test", "ba", "l", "")
 	_ = st.Add(j)
+	finished := time.Now().UTC()
 	_ = st.Update(j.ID, func(x *job.Job) {
 		x.State = job.StateError
 		x.Error = "kaputt"
 		x.Progress = job.Progress{Percent: 33}
+		x.FinishedAt = &finished
+		x.Filename = "video.mp4"
 	})
 	if rec := do(t, h, "POST", "/api/jobs/"+j.ID+"/retry", nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("Retry: %d", rec.Code)
@@ -350,6 +354,12 @@ func TestRetryJob(t *testing.T) {
 	got, _ := st.Get(j.ID)
 	if got.State != job.StateQueued || got.Error != "" || got.Progress.Percent != 0 {
 		t.Fatalf("Retry muss zurücksetzen: %+v", got)
+	}
+	if got.FinishedAt != nil {
+		t.Fatalf("Retry muss FinishedAt auf nil zurücksetzen: %+v", got)
+	}
+	if got.Filename != "" {
+		t.Fatalf("Retry muss Filename leeren: %+v", got)
 	}
 	// queued-Job kann nicht erneut versucht werden
 	if rec := do(t, h, "POST", "/api/jobs/"+j.ID+"/retry", nil); rec.Code != http.StatusConflict {

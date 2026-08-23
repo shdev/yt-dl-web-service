@@ -99,6 +99,7 @@ func (q *Queue) runJob(ctx context.Context, cancel context.CancelFunc, j job.Job
 		uerr = q.store.Update(j.ID, func(x *job.Job) {
 			x.State = job.StateDone
 			x.Progress = job.Progress{Percent: 100}
+			x.FinishedAt = now()
 		})
 	case ctx.Err() != nil:
 		if q.root != nil && q.root.Err() != nil {
@@ -106,11 +107,15 @@ func (q *Queue) runJob(ctx context.Context, cancel context.CancelFunc, j job.Job
 			// die Crash-Recovery reiht den Job beim nächsten Start wieder ein.
 			return
 		}
-		uerr = q.store.Update(j.ID, func(x *job.Job) { x.State = job.StateCanceled })
+		uerr = q.store.Update(j.ID, func(x *job.Job) {
+			x.State = job.StateCanceled
+			x.FinishedAt = now()
+		})
 	default:
 		uerr = q.store.Update(j.ID, func(x *job.Job) {
 			x.State = job.StateError
 			x.Error = err.Error()
+			x.FinishedAt = now()
 		})
 	}
 	if uerr != nil {
@@ -131,6 +136,14 @@ func (q *Queue) Cancel(id string) {
 	_ = q.store.Update(id, func(x *job.Job) {
 		if x.State == job.StateQueued {
 			x.State = job.StateCanceled
+			x.FinishedAt = now()
 		}
 	})
+}
+
+// now liefert einen Pointer auf die aktuelle UTC-Zeit — analog zu
+// job.New(), das CreatedAt ebenfalls per time.Now().UTC() setzt.
+func now() *time.Time {
+	t := time.Now().UTC()
+	return &t
 }

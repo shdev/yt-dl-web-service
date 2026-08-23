@@ -25,16 +25,20 @@ type Progress struct {
 }
 
 type Job struct {
-	ID            string    `json:"id"`
-	URL           string    `json:"url"`
-	Title         string    `json:"title"`
-	Format        string    `json:"format"`
-	FormatLabel   string    `json:"format_label"`
-	PlaylistTitle string    `json:"playlist_title,omitempty"`
-	State         State     `json:"state"`
-	Progress      Progress  `json:"progress"`
-	Error         string    `json:"error,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID             string     `json:"id"`
+	URL            string     `json:"url"`
+	Title          string     `json:"title"`
+	Format         string     `json:"format"`
+	FormatLabel    string     `json:"format_label"`
+	PlaylistTitle  string     `json:"playlist_title,omitempty"`
+	State          State      `json:"state"`
+	Progress       Progress   `json:"progress"`
+	Error          string     `json:"error,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	Filename       string     `json:"filename,omitempty"`
+	AudioFormatIDs []string   `json:"audio_format_ids,omitempty"`
+	MultiAudio     bool       `json:"multi_audio,omitempty"`
 }
 
 func New(url, title, format, formatLabel, playlistTitle string) Job {

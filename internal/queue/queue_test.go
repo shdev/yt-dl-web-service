@@ -77,6 +77,9 @@ func TestQueueRunsJobToDone(t *testing.T) {
 	if got.Progress.Percent != 100 {
 		t.Fatalf("fertiger Job muss 100%% haben: %+v", got)
 	}
+	if got.FinishedAt == nil {
+		t.Fatalf("done-Job muss FinishedAt gesetzt haben: %+v", got)
+	}
 }
 
 func TestQueueRespectsMaxConcurrent(t *testing.T) {
@@ -122,6 +125,9 @@ func TestQueueSetsErrorState(t *testing.T) {
 	if got.Error != "kaputt" {
 		t.Fatalf("Fehlermeldung fehlt: %+v", got)
 	}
+	if got.FinishedAt == nil {
+		t.Fatalf("error-Job muss FinishedAt gesetzt haben: %+v", got)
+	}
 }
 
 func TestQueueCancelRunning(t *testing.T) {
@@ -132,6 +138,10 @@ func TestQueueCancelRunning(t *testing.T) {
 	<-fr.started
 	q.Cancel(j.ID)
 	waitState(t, st, j.ID, job.StateCanceled)
+	got, _ := st.Get(j.ID)
+	if got.FinishedAt == nil {
+		t.Fatalf("canceled (running) Job muss FinishedAt gesetzt haben: %+v", got)
+	}
 }
 
 func TestQueueShutdownKeepsRunningState(t *testing.T) {
@@ -169,5 +179,8 @@ func TestQueueCancelQueued(t *testing.T) {
 	got, _ := st.Get(j.ID)
 	if got.State != job.StateCanceled {
 		t.Fatalf("wartender Job muss canceled sein, war %s", got.State)
+	}
+	if got.FinishedAt == nil {
+		t.Fatalf("canceled (queued) Job muss FinishedAt gesetzt haben: %+v", got)
 	}
 }

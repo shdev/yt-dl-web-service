@@ -87,6 +87,16 @@ func TestExecRunnerArgsAlwaysPrintFilepath(t *testing.T) {
 	if containsAny(args, "--audio-multistreams", "--merge-output-format") {
 		t.Fatalf("Multistream-Flags dürfen ohne MultiAudio nicht gesetzt sein: %v", args)
 	}
+	if !containsSeq(args, "--write-thumbnail") {
+		t.Fatalf("--write-thumbnail fehlt in Argumenten: %v", args)
+	}
+	if !containsSeq(args, "--convert-thumbnails", "jpg") {
+		t.Fatalf("--convert-thumbnails jpg fehlt in Argumenten: %v", args)
+	}
+	wantPosterOut := "thumbnail:" + filepath.Join(dir, "x-poster.%(ext)s")
+	if !containsSeq(args, "-o", wantPosterOut) {
+		t.Fatalf("-o %q (Poster-Output-Template) fehlt in Argumenten: %v", wantPosterOut, args)
+	}
 }
 
 func TestExecRunnerArgsMultistreamWhenMultiAudio(t *testing.T) {
@@ -111,6 +121,16 @@ func TestExecRunnerArgsMultistreamWhenMultiAudio(t *testing.T) {
 	}
 	if !containsSeq(args, "--merge-output-format", "mp4/mkv") {
 		t.Fatalf("--merge-output-format mp4/mkv fehlt bei MultiAudio: %v", args)
+	}
+	if !containsSeq(args, "--write-thumbnail") {
+		t.Fatalf("--write-thumbnail fehlt in Argumenten: %v", args)
+	}
+	if !containsSeq(args, "--convert-thumbnails", "jpg") {
+		t.Fatalf("--convert-thumbnails jpg fehlt in Argumenten: %v", args)
+	}
+	wantPosterOut := "thumbnail:" + filepath.Join(dir, "x-poster.%(ext)s")
+	if !containsSeq(args, "-o", wantPosterOut) {
+		t.Fatalf("-o %q (Poster-Output-Template) fehlt in Argumenten: %v", wantPosterOut, args)
 	}
 }
 

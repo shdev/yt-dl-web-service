@@ -91,6 +91,16 @@ app update, playlist jobs still queued from an older version are no longer
 recognized as duplicates of the same URL (the expression it was built with
 may have changed) — if in doubt, let the queue drain before updating.
 
+## Poster images
+
+Every video download gets a matching `<name>-poster.jpg` written next to it —
+same base name as the video file, `-poster.jpg` appended before the
+extension (e.g. `Me at the zoo [jNQXAC9IVRw].webm` gets a sibling
+`Me at the zoo [jNQXAC9IVRw]-poster.jpg`). This follows the artwork
+convention media servers like Jellyfin, Plex and Kodi look for automatically.
+If the source has no thumbnail available, yt-dlp just prints a warning and
+the download proceeds normally — no poster file, no failed job.
+
 ## Multi-language audio
 
 For videos with several audio tracks (real dubs, e.g. ARTE's German /

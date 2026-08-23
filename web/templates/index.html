@@ -1,121 +1,103 @@
 <!doctype html>
-<html lang="de" data-bs-theme="dark">
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>yt-dl Web</title>
-  <link rel="stylesheet" href="/static/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <div class="container py-4" style="max-width: 960px">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1 class="mb-0">yt-dl Web</h1>
-      <button class="btn btn-outline-secondary" id="settings-btn" type="button" title="Einstellungen">⚙️</button>
-    </div>
+  <div class="mx-auto max-w-[860px] px-4 py-7 sm:px-6">
+    <header class="mb-6 flex items-center justify-between">
+      <h1 class="text-[17px] font-semibold tracking-tight">yt-dl <span class="text-accent">web</span></h1>
+      <button class="btn btn-ghost size-8 rounded-[7px] p-0" id="settings-btn" type="button" title="Einstellungen" aria-label="Einstellungen">
+        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </header>
 
-    <div class="card mb-4 d-none" id="settings-card">
-      <div class="card-body">
-        <label class="form-label" for="default-profile">Standard-Profil (Vorauswahl nach jeder Analyse)</label>
-        <select class="form-select" id="default-profile">
-          {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
-          {{end}}</select>
-        <div class="form-text d-none" id="settings-saved">Gespeichert ✓</div>
-        <hr>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          <span>yt-dlp-Version: <code id="ytdlp-version">…</code></span>
-          <button class="btn btn-sm btn-outline-primary" id="ytdlp-update-btn" type="button">Jetzt aktualisieren</button>
+    <section class="card mb-4" id="settings-card" hidden>
+      <div class="grid gap-4">
+        <div>
+          <label class="field-label" for="default-profile">Standard-Profil (Vorauswahl nach jeder Analyse)</label>
+          <select class="select" id="default-profile">
+            {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
+            {{end}}</select>
+          <div class="mt-1.5 text-xs text-ok" id="settings-saved" hidden>Gespeichert ✓</div>
         </div>
-        <div class="form-text d-none" id="ytdlp-update-status"></div>
-      </div>
-    </div>
-
-    <div class="card mb-4">
-      <div class="card-body">
-        <label for="url-input" class="form-label">Video- oder Playlist-URL</label>
-        <div class="input-group">
-          <input type="url" class="form-control" id="url-input" placeholder="https://…" autofocus>
-          <button class="btn btn-primary" id="probe-btn">Analysieren</button>
+        <div class="h-px bg-edge"></div>
+        <div class="flex flex-wrap items-center gap-2.5 text-sm text-muted">
+          <span>yt-dlp-Version: <code class="rounded-md border border-edge-strong bg-bg px-2 py-0.5 font-mono text-xs text-text" id="ytdlp-version">…</code></span>
+          <button class="btn btn-ghost btn-sm" id="ytdlp-update-btn" type="button">Jetzt aktualisieren</button>
         </div>
-        <div class="alert alert-danger mt-3 d-none" id="probe-error"></div>
+        <div class="text-xs text-muted" id="ytdlp-update-status" hidden></div>
       </div>
-    </div>
+    </section>
 
-    <div class="card mb-4 d-none" id="select-card">
-      <div class="card-body">
-        <div class="d-flex gap-3 mb-3">
-          <img id="video-thumb" src="" alt="" class="rounded d-none"
-               style="width:160px;height:auto;object-fit:cover">
+    <section class="card mb-4">
+      <label class="field-label" for="url-input">Video- oder Playlist-URL</label>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <input type="url" class="input" id="url-input" placeholder="https://…" autofocus>
+        <button class="btn btn-primary" id="probe-btn">Analysieren</button>
+      </div>
+      <div class="mt-3 text-sm text-danger" id="probe-error" hidden></div>
+    </section>
+
+    <section class="card mb-4" id="select-card" hidden>
+      <div class="mb-4 flex gap-3.5">
+        <img id="video-thumb" src="" alt="" class="aspect-video w-[148px] self-start rounded-lg object-cover" hidden>
+        <div class="min-w-0">
+          <h2 class="text-[14.5px] font-semibold" id="select-title"></h2>
+          <div class="text-[12.5px] text-muted" id="select-subtitle"></div>
+        </div>
+      </div>
+
+      <div id="video-options">
+        <div class="seg mb-4" role="radiogroup" aria-label="Formatwahl-Modus">
+          <input class="sr-only" type="radio" name="mode" id="mode-profile" value="profile" checked>
+          <label class="seg-label" for="mode-profile">Profil</label>
+          <input class="sr-only" type="radio" name="mode" id="mode-manual" value="manual">
+          <label class="seg-label" for="mode-manual">Formate wählen</label>
+          <input class="sr-only" type="radio" name="mode" id="mode-audio" value="audio">
+          <label class="seg-label" for="mode-audio">Nur Audio</label>
+        </div>
+        <div class="mb-4" id="video-profile-wrap">
+          <label class="field-label" for="video-profile">Qualitätsprofil</label>
+          <select class="select" id="video-profile">
+            {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
+            {{end}}</select>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2" id="format-selects" hidden>
+          <div id="video-col">
+            <label class="field-label" for="video-format">Videoformat</label>
+            <select class="select" id="video-format"></select>
+          </div>
           <div>
-            <h5 id="select-title" class="mb-1"></h5>
-            <div id="select-subtitle" class="text-body-secondary"></div>
+            <label class="field-label" for="audio-format">Audioformat</label>
+            <select class="select" id="audio-format"></select>
           </div>
         </div>
+      </div>
 
-        <div id="video-options">
-          <div class="mb-3">
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="mode" id="mode-profile" value="profile" checked>
-              <label class="form-check-label" for="mode-profile">Profil</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="mode" id="mode-manual" value="manual">
-              <label class="form-check-label" for="mode-manual">Formate wählen</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="mode" id="mode-audio" value="audio">
-              <label class="form-check-label" for="mode-audio">Nur Audio</label>
-            </div>
-          </div>
-          <div class="mb-3" id="video-profile-wrap">
-            <select class="form-select" id="video-profile">
-              {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
-              {{end}}</select>
-          </div>
-          <div class="row g-3 d-none" id="format-selects">
-            <div class="col-md-6" id="video-col">
-              <label class="form-label" for="video-format">Videoformat</label>
-              <select class="form-select" id="video-format"></select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label" for="audio-format">Audioformat</label>
-              <select class="form-select" id="audio-format"></select>
-            </div>
-          </div>
-        </div>
-
-        <div id="playlist-options" class="d-none">
-          <label class="form-label" for="profile-select">Qualitätsprofil</label>
-          <select class="form-select" id="profile-select">
+      <div id="playlist-options" hidden>
+        <label class="field-label" for="profile-select">Qualitätsprofil</label>
+        <select class="select" id="profile-select">
           {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
           {{end}}</select>
-        </div>
-
-        <button class="btn btn-success mt-3" id="start-btn">Download starten</button>
-        <div class="alert alert-danger mt-3 d-none" id="start-error"></div>
       </div>
-    </div>
 
-    <div class="card">
-      <div class="card-header">Downloads</div>
-      <div class="table-responsive">
-        <table class="table align-middle mb-0">
-          <thead>
-            <tr>
-              <th>Titel</th>
-              <th>Format</th>
-              <th>Status</th>
-              <th style="min-width:160px">Fortschritt</th>
-              <th>Tempo</th>
-              <th>ETA</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="jobs-tbody"></tbody>
-        </table>
-      </div>
-    </div>
+      <button class="btn btn-primary mt-4" id="start-btn">Download starten</button>
+      <div class="mt-3 text-sm text-danger" id="start-error" hidden></div>
+    </section>
+
+    <h2 class="section-title mx-0.5 mt-6 mb-2.5">Downloads</h2>
+    <div class="text-sm text-dim" id="jobs-empty">Noch keine Downloads</div>
+    <div class="grid gap-2" id="jobs-list"></div>
   </div>
-  <script src="/static/bootstrap.bundle.min.js"></script>
+
+  <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>

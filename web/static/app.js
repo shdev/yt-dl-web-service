@@ -16,8 +16,8 @@ async function api(path, options = {}) {
   return body;
 }
 
-function show(el) { el.classList.remove("d-none"); }
-function hide(el) { el.classList.add("d-none"); }
+function show(el) { el.hidden = false; }
+function hide(el) { el.hidden = true; }
 
 function esc(s) {
   // Escapt auch Quotes — der Wert landet teils in Attribut-Kontexten.
@@ -47,8 +47,9 @@ async function loadSettings() {
 loadSettings();
 
 $("settings-btn").addEventListener("click", () => {
-  $("settings-card").classList.toggle("d-none");
-  if (!$("settings-card").classList.contains("d-none")) loadYtdlpVersion();
+  const card = $("settings-card");
+  card.hidden = !card.hidden;
+  if (!card.hidden) loadYtdlpVersion();
 });
 
 // --- yt-dlp-Version & Update -----------------------------------------------
@@ -68,7 +69,7 @@ async function loadYtdlpVersion() {
     if (seq !== ytdlpVersionSeq) return;
     $("ytdlp-version").textContent = "unbekannt";
     const status = $("ytdlp-update-status");
-    status.classList.add("text-danger");
+    status.className = "text-xs text-danger";
     status.textContent = `Versionsabfrage fehlgeschlagen: ${err.message}`;
     show(status);
     console.error(err);
@@ -80,7 +81,7 @@ $("ytdlp-update-btn").addEventListener("click", async () => {
   const status = $("ytdlp-update-status");
   ytdlpVersionSeq++; // laufende Versions-Fetches invalidieren
   btn.disabled = true;
-  status.classList.remove("text-danger");
+  status.className = "text-xs text-muted";
   status.textContent = "Update läuft — das kann eine Minute dauern…";
   show(status);
   try {
@@ -89,7 +90,7 @@ $("ytdlp-update-btn").addEventListener("click", async () => {
     $("ytdlp-version").textContent = res.version;
     status.textContent = `Aktuell: ${res.version} ✓`;
   } catch (err) {
-    status.classList.add("text-danger");
+    status.className = "text-xs text-danger";
     status.textContent = err.message;
     console.error(err);
   } finally {
@@ -271,12 +272,12 @@ function formatLabel(mode) {
 
 // --- Jobs-Tabelle ----------------------------------------------------------
 
-const STATE_BADGES = {
-  queued:   ["text-bg-secondary", "Wartet"],
-  running:  ["text-bg-primary", "Lädt"],
-  done:     ["text-bg-success", "Fertig"],
-  error:    ["text-bg-danger", "Fehler"],
-  canceled: ["text-bg-warning", "Abgebrochen"],
+const STATE_PILLS = {
+  queued:   ["pill pill-wait", "Wartet"],
+  running:  ["pill pill-run", "Lädt"],
+  done:     ["pill pill-ok", "Fertig"],
+  error:    ["pill pill-err", "Fehler"],
+  canceled: ["pill pill-warn", "Abgebrochen"],
 };
 
 async function refreshJobs() {
@@ -289,54 +290,57 @@ async function refreshJobs() {
 }
 
 function renderJobs(jobs) {
-  $("jobs-tbody").innerHTML = jobs.map((j) => {
-    const [badge, label] = STATE_BADGES[j.state] || ["text-bg-secondary", esc(j.state)];
+  $("jobs-empty").hidden = jobs.length > 0;
+  $("jobs-list").innerHTML = jobs.map((j) => {
+    const [pill, label] = STATE_PILLS[j.state] || ["pill pill-wait", esc(j.state)];
     const pct = Math.round(j.progress?.percent || 0);
     let title = esc(j.title || j.url);
     if (j.playlist_title) {
-      title += ` <small class="text-body-secondary">(${esc(j.playlist_title)})</small>`;
+      title += ` <span class="font-normal text-muted">(${esc(j.playlist_title)})</span>`;
     }
-    let errorHTML = j.error
-      ? `<div class="small text-danger">${esc(j.error)}</div>` : "";
+    const meta = [
+      j.format_label,
+      j.progress?.speed,
+      j.progress?.eta ? `ETA ${j.progress.eta}` : "",
+      j.state === "running" ? `${pct} %` : "",
+    ].filter(Boolean).map(esc).join(" · ");
+    let extra = j.error
+      ? `<div class="col-span-full text-xs text-danger">${esc(j.error)}</div>` : "";
     // Bekanntes Muster (z.B. yt-dlp#17456): 403 heißt fast immer, dass
     // yt-dlp veraltet ist — direkt zur Abhilfe verlinken.
     if (j.error && /HTTP Error 403|403: Forbidden/i.test(j.error)) {
-      errorHTML += `<div class="small text-body-secondary">Tipp: yt-dlp über ⚙️ →
-        „Jetzt aktualisieren“ auf den neuesten Stand bringen und den Job erneut starten.</div>`;
+      extra += `<div class="col-span-full text-xs text-muted">Tipp: yt-dlp über
+        Einstellungen → „Jetzt aktualisieren“ auf den neuesten Stand bringen und den Job erneut starten.</div>`;
     }
-    const animated = j.state === "running" ? " progress-bar-striped progress-bar-animated" : "";
-    return `<tr>
-      <td>${title}${errorHTML}</td>
-      <td class="small">${esc(j.format_label)}</td>
-      <td><span class="badge ${badge}">${label}</span></td>
-      <td>
-        <div class="progress" role="progressbar" aria-valuenow="${pct}"
-             aria-valuemin="0" aria-valuemax="100">
-          <div class="progress-bar${animated}" style="width:${pct}%">${pct}%</div>
-        </div>
-      </td>
-      <td class="small">${esc(j.progress?.speed || "")}</td>
-      <td class="small">${esc(j.progress?.eta || "")}</td>
-      <td class="text-nowrap">${actionButtons(j)}</td>
-    </tr>`;
+    if (j.state === "running") {
+      extra += `<div class="col-span-full bar" role="progressbar" aria-valuenow="${pct}"
+        aria-valuemin="0" aria-valuemax="100"><span class="bar-fill" style="width:${pct}%"></span></div>`;
+    }
+    return `<div class="job-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-1.5 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+      <div class="truncate text-sm font-medium">${title}</div>
+      <span class="${pill} justify-self-end"><i class="pill-dot"></i>${label}</span>
+      <div class="col-span-2 flex gap-1.5 justify-self-start sm:col-span-1 sm:justify-self-end">${actionButtons(j)}</div>
+      ${meta ? `<div class="col-span-full text-xs text-muted tabular-nums">${meta}</div>` : ""}
+      ${extra}
+    </div>`;
   }).join("");
 }
 
 function actionButtons(j) {
-  const btn = (action, label, cls) =>
-    `<button class="btn btn-sm ${cls}" data-action="${action}" data-id="${j.id}">${label}</button>`;
+  const btn = (action, label) =>
+    `<button class="btn btn-ghost btn-sm" data-action="${action}" data-id="${j.id}">${label}</button>`;
   if (j.state === "queued" || j.state === "running") {
-    return btn("cancel", "Abbrechen", "btn-outline-warning");
+    return btn("cancel", "Abbrechen");
   }
   const parts = [];
   if (j.state === "error" || j.state === "canceled") {
-    parts.push(btn("retry", "Erneut", "btn-outline-primary"));
+    parts.push(btn("retry", "Erneut"));
   }
-  parts.push(btn("delete", "Entfernen", "btn-outline-danger"));
+  parts.push(btn("delete", "Entfernen"));
   return parts.join(" ");
 }
 
-$("jobs-tbody").addEventListener("click", async (e) => {
+$("jobs-list").addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   const { action, id } = btn.dataset;

@@ -286,15 +286,19 @@ TAILWIND_VERSION := 4.3.3
 ```make
 # Tailwind-CSS via Docker kompilieren — kein lokales npm nötig.
 # Das npm-Cache-Volume erspart den CLI-Download bei jedem Aufruf.
+# Der Symlink nach /node_modules ist nötig, weil der v4-Resolver das Paket
+# "tailwindcss" vom Verzeichnis der Input-Datei aufwärts sucht.
+TAILWIND_RUN = npm install -g @tailwindcss/cli@$(TAILWIND_VERSION) >/dev/null \
+	&& ln -s /usr/local/lib/node_modules/@tailwindcss/cli/node_modules /node_modules \
+	&& cd /work && tailwindcss -i web/src/input.css -o web/static/app.css
+
 css:
-	docker run --rm -v $(CURDIR):/work -v ytdlweb-npm-cache:/root/.npm -w /work \
-		node:22-alpine npx -y @tailwindcss/cli@$(TAILWIND_VERSION) \
-		-i web/src/input.css -o web/static/app.css --minify
+	docker run --rm -v $(CURDIR):/work -v ytdlweb-npm-cache:/root/.npm \
+		node:22-alpine sh -c "$(TAILWIND_RUN) --minify"
 
 css-watch:
-	docker run --rm -it -v $(CURDIR):/work -v ytdlweb-npm-cache:/root/.npm -w /work \
-		node:22-alpine npx -y @tailwindcss/cli@$(TAILWIND_VERSION) \
-		-i web/src/input.css -o web/static/app.css --watch
+	docker run --rm -it -v $(CURDIR):/work -v ytdlweb-npm-cache:/root/.npm \
+		node:22-alpine sh -c "$(TAILWIND_RUN) --watch"
 ```
 
 - [ ] **Step 5: CSS erzeugen und prüfen**
@@ -341,7 +345,10 @@ Ganz an den Anfang des `Dockerfile` (vor „Stage 1: Go-Build“):
 # Muss mit TAILWIND_VERSION im Makefile übereinstimmen.
 FROM node:22-alpine AS css
 ARG TAILWIND_VERSION=4.3.3
-RUN npm install -g @tailwindcss/cli@${TAILWIND_VERSION}
+# Symlink: der v4-Resolver sucht das Paket "tailwindcss" vom Verzeichnis der
+# Input-Datei aufwärts — /node_modules liegt auf diesem Pfad.
+RUN npm install -g @tailwindcss/cli@${TAILWIND_VERSION} \
+ && ln -s /usr/local/lib/node_modules/@tailwindcss/cli/node_modules /node_modules
 WORKDIR /src
 COPY web/ web/
 RUN tailwindcss -i web/src/input.css -o /out/app.css --minify

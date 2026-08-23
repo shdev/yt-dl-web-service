@@ -3,8 +3,10 @@ BINARY := bin/app
 IMAGE := yt-dl-web-service
 GHCR_USER ?= shdev
 TAG ?= latest
+# Muss mit ARG TAILWIND_VERSION im Dockerfile übereinstimmen.
+TAILWIND_VERSION := 4.3.3
 
-.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down start clean
+.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down start css css-watch clean
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY) ./cmd/server
@@ -68,3 +70,19 @@ start: up
 
 clean:
 	rm -rf bin tmp
+
+# Tailwind-CSS via Docker kompilieren — kein lokales npm nötig.
+# Das npm-Cache-Volume erspart den CLI-Download bei jedem Aufruf.
+# Der Symlink nach /node_modules ist nötig, weil der v4-Resolver das Paket
+# "tailwindcss" vom Verzeichnis der Input-Datei aufwärts sucht.
+TAILWIND_RUN = npm install -g @tailwindcss/cli@$(TAILWIND_VERSION) >/dev/null \
+	&& ln -s /usr/local/lib/node_modules/@tailwindcss/cli/node_modules /node_modules \
+	&& cd /work && tailwindcss -i web/src/input.css -o web/static/app.css
+
+css:
+	docker run --rm -v $(CURDIR):/work -v ytdlweb-npm-cache:/root/.npm \
+		node:22-alpine sh -c "$(TAILWIND_RUN) --minify"
+
+css-watch:
+	docker run --rm -it -v $(CURDIR):/work -v ytdlweb-npm-cache:/root/.npm \
+		node:22-alpine sh -c "$(TAILWIND_RUN) --watch"

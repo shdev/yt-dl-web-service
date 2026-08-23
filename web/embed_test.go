@@ -10,8 +10,7 @@ func TestEmbeddedAssets(t *testing.T) {
 	files := []string{
 		"templates/index.html",
 		"static/app.js",
-		"static/bootstrap.min.css",
-		"static/bootstrap.bundle.min.js",
+		"static/app.css",
 	}
 	for _, f := range files {
 		data, err := web.FS.ReadFile(f)

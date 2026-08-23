@@ -14,7 +14,7 @@ land directly in a mounted folder (e.g. your media library).
 - Parallel downloads (configurable), with live progress, speed and ETA
 - Persistent job queue: survives container restarts, interrupted downloads resume (`--continue`)
 - Retry, cancel and remove jobs from the UI (removing a job never deletes files)
-- Single container: one Go binary with an embedded Bootstrap UI, no CDN, UI works offline
+- Single container: one Go binary with an embedded UI (custom Tailwind-built CSS), no CDN, UI works offline
 - Optional yt-dlp self-update on container start — plus a one-click update
   button in the UI (gear icon), no container restart needed
 - Ships deno as JavaScript runtime — required by current yt-dlp for YouTube
@@ -88,7 +88,7 @@ deno release — the build skips it and the warning remains.
 - Jobs are persisted to `/config/jobs.json` on every state change (atomic
   temp-file + rename). After a restart, interrupted jobs are re-queued and
   resume from their `.part` files.
-- The UI (Bootstrap 5, vanilla JS, German) polls `/api/jobs` every 1.5 s.
+- The UI (vanilla JS, Tailwind CSS, German) polls `/api/jobs` every 1.5 s.
 - The Docker image is based on `mikenye/youtube-dl` (ships yt-dlp + ffmpeg),
   built for amd64, with deno added on top (amd64/arm64) as the JS runtime
   yt-dlp needs for YouTube.
@@ -186,10 +186,22 @@ Note: the first push creates a *private* package. Switch it to *public* once
 in the package settings on GitHub (Packages → yt-dl-web-service → Package
 settings → Change visibility) so it can be pulled without authentication.
 
+## Development
+
+`web/static/app.css` is generated from `web/src/input.css` with Tailwind CSS —
+do not edit it by hand. After changing HTML, JS or `input.css`, rebuild it:
+
+    make css        # one-shot build (runs in Docker, no local npm needed)
+    make css-watch  # rebuild on every change while styling
+
+The generated file is committed so `go test` and `make run` work without
+Docker. The Docker image builds its own fresh CSS in a dedicated build stage,
+so a stale committed `app.css` never ends up in the image.
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE.md) — you may use, modify and share
 this software for any noncommercial purpose; commercial use is not permitted.
 
-Bundled components keep their own licenses: Bootstrap (MIT, vendored),
-yt-dlp (Unlicense, pulled at image build/start time).
+Bundled components keep their own licenses: Tailwind CSS (MIT, generated
+stylesheet), yt-dlp (Unlicense, pulled at image build/start time).

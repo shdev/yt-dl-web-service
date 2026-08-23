@@ -76,11 +76,16 @@ vielen Sprachen plus „original (default)“). Gewünscht:
 
 1. **UI-Auswahl:** Bei Multi-Language-Videos eine Auswahl anbieten, welche
    Sprache(n) heruntergeladen werden.
-2. **Default-Regel (gilt für alle Videos):** Immer die Original-Version
-   bevorzugen. Sprachordnung de vor en — ein deutsches Original schlägt ein
-   englisches Original. Dubbed-Versionen sind zweitrangig (dort dieselbe
-   Ordnung de vor en). Alle anderen Sprachen können ignoriert werden.
-   Ergibt als Rangfolge: original-de > original-en > dubbed-de > dubbed-en.
+2. **Default-Regel (gilt für alle Videos, präzisiert 2026-08-23):**
+   - Bevorzugte Spur: Deutsch vor Englisch. Bei echten Synchros (z. B.
+     ARTE) gewinnt die deutsche Synchro — nicht das fremdsprachige
+     Original.
+   - **Das Original wird als Default immer zusätzlich mit
+     heruntergeladen**, wenn es von der bevorzugten Spur abweicht.
+   - Auto-Dubs (YouTube „dubbed-auto“) sind zweitrangig, dort ebenfalls
+     de vor en. Alle anderen Sprachen können ignoriert werden.
+   - Ergibt im Normalfall: deutsche Spur + Original-Spur in einem
+     Download.
 
 **Ausgangslage (Kurz-Recherche):**
 
@@ -99,13 +104,14 @@ vielen Sprachen plus „original (default)“). Gewünscht:
 
 **Offene Fragen für die Planung:**
 
-- Klarstellung der Regel am ARTE-Beispiel: Dort ist das Original Englisch,
-  Deutsch ist Synchro. Strikt „Original zuerst“ ⇒ englisches Original vor
-  deutscher Synchro. Gewollt? Oder de-Synchro vor fremdsprachigem Original?
+- ~~Klarstellung ARTE-Beispiel~~ geklärt: de-Synchro bevorzugt, Original
+  läuft als zweite Spur immer mit.
 - Audiodeskription (ARTE „Deutsch (Audiodeskription)“) darf trotz „de“
   nicht vor normalem Deutsch/Original landen — explizit abwerten.
-- Mehrere Sprachen gleichzeitig: getrennte Dateien oder eine Datei mit
-  mehreren Tonspuren (`--audio-multistreams`, erzwingt i. d. R. mkv)?
+- „Original immer dabei“ heißt zwei Audiospuren: eine Datei mit mehreren
+  Tonspuren via `--audio-multistreams` (Container wird dann i. d. R. mkv
+  statt mp4 — Auswirkung auf Player/NAS klären) oder zwei getrennte
+  Dateien? Und: gilt das auch im „Nur Audio“-Modus?
 - Gilt die Sprachauswahl auch für Playlist-Profile oder nur für
   Einzelvideos mit Formatwahl?
 - Untertitel gleich mitdenken (gleiche Sprachlogik) oder bewusst außen vor?

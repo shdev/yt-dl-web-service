@@ -39,9 +39,12 @@ image-native:
 # Manueller Push zur GitHub Container Registry (kein CI):
 #   make push [TAG=v1]            — Default-User: shdev
 # Voraussetzung (einmalig): docker login ghcr.io mit PAT (Scope write:packages)
-push: check-ghcr-user image
-	docker tag $(IMAGE) ghcr.io/$(GHCR_USER)/$(IMAGE):$(TAG)
-	docker push ghcr.io/$(GHCR_USER)/$(IMAGE):$(TAG)
+# Baut amd64+arm64 via buildx und pusht EIN Multi-Arch-Manifest.
+# (image/image-native taggen beide $(IMAGE) — ein tag+push eines einzelnen
+# Builds würde :latest sonst auf eine einzige Architektur reduzieren.)
+push: check-ghcr-user
+	docker buildx build --platform linux/amd64,linux/arm64 \
+		-t ghcr.io/$(GHCR_USER)/$(IMAGE):$(TAG) --push .
 
 check-ghcr-user:
 	@test -n "$(GHCR_USER)" || { echo "GHCR_USER fehlt: make push GHCR_USER=<github-user>"; exit 1; }

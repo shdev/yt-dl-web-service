@@ -37,6 +37,38 @@ func TestParseProbeJSONVideo(t *testing.T) {
 	}
 }
 
+func TestParseProbeJSONLanguage(t *testing.T) {
+	data := []byte(`{
+		"id": "abc123",
+		"title": "Sprachtest",
+		"formats": [
+			{"format_id": "1", "ext": "m4a", "resolution": "audio only", "vcodec": "none", "acodec": "mp4a.40.2", "language": "de-DE", "language_preference": 10},
+			{"format_id": "2", "ext": "m4a", "resolution": "audio only", "vcodec": "none", "acodec": "mp4a.40.2"}
+		]
+	}`)
+	res, err := ytdlp.ParseProbeJSON(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Video == nil || len(res.Video.Formats) != 2 {
+		t.Fatalf("kein Video mit 2 Formaten: %+v", res)
+	}
+	withLang := res.Video.Formats[0]
+	if withLang.Language != "de-DE" {
+		t.Fatalf("Language falsch geparst: %+v", withLang)
+	}
+	if withLang.LanguagePreference == nil || *withLang.LanguagePreference != 10 {
+		t.Fatalf("LanguagePreference falsch geparst: %+v", withLang)
+	}
+	withoutLang := res.Video.Formats[1]
+	if withoutLang.Language != "" {
+		t.Fatalf("Language sollte bei fehlendem Feld leer sein: %+v", withoutLang)
+	}
+	if withoutLang.LanguagePreference != nil {
+		t.Fatalf("LanguagePreference sollte bei fehlendem Feld nil sein: %+v", withoutLang)
+	}
+}
+
 func TestParseProbeJSONPlaylist(t *testing.T) {
 	data, err := os.ReadFile("testdata/playlist.json")
 	if err != nil {

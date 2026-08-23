@@ -20,6 +20,9 @@ type Format struct {
 	ACodec     string  `json:"acodec"`
 	Note       string  `json:"format_note,omitempty"`
 	Filesize   int64   `json:"filesize,omitempty"`
+
+	Language           string `json:"language,omitempty"`
+	LanguagePreference *int   `json:"language_preference,omitempty"`
 }
 
 type Video struct {
@@ -65,6 +68,8 @@ type rawInfo struct {
 		FormatNote     string  `json:"format_note"`
 		Filesize       int64   `json:"filesize"`
 		FilesizeApprox int64   `json:"filesize_approx"`
+		Language       string  `json:"language"`
+		LanguagePref   *int    `json:"language_preference"`
 	} `json:"formats"`
 	Entries []struct {
 		URL   string `json:"url"`
@@ -98,6 +103,7 @@ func ParseProbeJSON(data []byte) (*ProbeResult, error) {
 			FPS: f.FPS, TBR: f.TBR, ABR: f.ABR,
 			VCodec: f.VCodec, ACodec: f.ACodec, Note: f.FormatNote,
 			Filesize: size,
+			Language: f.Language, LanguagePreference: f.LanguagePref,
 		})
 	}
 	return &ProbeResult{Type: "video", Video: v}, nil

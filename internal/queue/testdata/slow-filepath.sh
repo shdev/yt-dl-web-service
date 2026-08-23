@@ -1,15 +1,18 @@
 #!/bin/sh
 # Test-Fake für TestQueueAttributesFilenamesToCorrectConcurrentJob: leitet
-# Zielverzeichnis (aus dem -o-Argument) und Dateiname (aus dem letzten
-# Argument, der Job-URL) ab, statt Umgebungsvariablen zu nutzen — so bleiben
-# zwei gleichzeitig laufende Prozesse unabhängig voneinander. Job "a" pausiert
+# Zielverzeichnis (aus dem ERSTEN -o-Argument — dem Video-Output-Template;
+# der Runner hängt danach noch ein zweites -o "thumbnail:..." fürs Poster an,
+# das hier ignoriert wird, genau wie im echten yt-dlp der erste unpräfixierte
+# -o das Standard-Template setzt) und Dateiname (aus dem letzten Argument,
+# der Job-URL) ab, statt Umgebungsvariablen zu nutzen — so bleiben zwei
+# gleichzeitig laufende Prozesse unabhängig voneinander. Job "a" pausiert
 # länger als Job "b", damit b garantiert fertig ist, während a noch läuft
 # (deckt Job-übergreifendes Überschreiben eines geteilten Callback-Felds auf).
 outdir=""
 prev=""
 url=""
 for arg in "$@"; do
-	if [ "$prev" = "-o" ]; then
+	if [ "$prev" = "-o" ] && [ -z "$outdir" ]; then
 		outdir=$(dirname "$arg")
 	fi
 	prev="$arg"

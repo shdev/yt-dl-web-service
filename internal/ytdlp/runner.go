@@ -38,6 +38,9 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 		"--no-playlist",
 		"--no-warnings",
 		"--print", "after_move:filepath",
+		"--write-thumbnail",
+		"--convert-thumbnails", "jpg",
+		"-o", "thumbnail:" + filepath.Join(r.DownloadDir, posterTemplate(r.OutputTemplate)),
 	}
 	if j.MultiAudio {
 		args = append(args, "--audio-multistreams", "--merge-output-format", "mp4/mkv")
@@ -95,6 +98,21 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 		return fmt.Errorf("yt-dlp: %w: %s", err, stderr.String())
 	}
 	return nil
+}
+
+// posterTemplate leitet aus dem Video-Output-Template das Output-Template
+// fürs Poster-Bild ab: das Suffix "-poster" landet vor der Extension, damit
+// Poster und Video denselben Basisnamen teilen (Jellyfin/Plex/Kodi-Konvention
+// für Artwork, z. B. "Titel [id]-poster.jpg" neben "Titel [id].webm").
+// Endet tpl nicht auf ".%(ext)s" (exotisches Template), wird "-poster.%(ext)s"
+// stattdessen angehängt statt eingefügt.
+const extSuffix = ".%(ext)s"
+
+func posterTemplate(tpl string) string {
+	if strings.HasSuffix(tpl, extSuffix) {
+		return strings.TrimSuffix(tpl, extSuffix) + "-poster" + extSuffix
+	}
+	return tpl + "-poster" + extSuffix
 }
 
 // tailBuffer behält die letzten max Bytes — genug für Fehlermeldungen,

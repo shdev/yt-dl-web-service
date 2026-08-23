@@ -4,6 +4,8 @@ Sammelphase; Planung folgt gesondert (erst auf Zuruf).
 
 ## 1. Zeitstempel und Dateiname in der Job-Karte
 
+**Umgesetzt am 2026-08-23** — Spec: `docs/superpowers/specs/2026-08-23-metadata-language-extensions-design.md` (Abschnitt B), Plan: `docs/superpowers/plans/2026-08-23-metadata-language-extensions.md`.
+
 **Idee (2026-08-23):** In der UI sieht man pro Eintrag, wann er aufgenommen
 wurde bzw. wann er fertig heruntergeladen war. Außerdem sieht man den
 Dateinamen der heruntergeladenen Datei.
@@ -28,6 +30,8 @@ Dateinamen der heruntergeladenen Datei.
   leere Werte verkraften.
 
 ## 2. Verzeichnisstruktur aus Metadaten: Quelle/Kanal
+
+**Umgesetzt am 2026-08-23** — Spec: `docs/superpowers/specs/2026-08-23-metadata-language-extensions-design.md` (Abschnitt C), Plan: `docs/superpowers/plans/2026-08-23-metadata-language-extensions.md`.
 
 **Idee (2026-08-23):** Downloads anhand von Metadaten in Unterverzeichnisse
 sortieren: pro Quelle ein Ordner (alle YouTube-Videos unter `youtube/`,
@@ -68,6 +72,8 @@ beiden konkret gefüllt sind (Login-/Cookie-Pflicht bei Instagram kann
 Metadaten beeinflussen).
 
 ## 3. Mehrsprachige Audios: Sprachwahl + kluge Defaults
+
+**Umgesetzt am 2026-08-23** — Spec: `docs/superpowers/specs/2026-08-23-metadata-language-extensions-design.md` (Abschnitte D, E, F), Plan: `docs/superpowers/plans/2026-08-23-metadata-language-extensions.md`.
 
 **Idee (2026-08-23):** Manche Videos haben mehrere Audiospuren — echte
 Mehrsprachigkeit (z. B. ARTE: Deutsch, Französisch, Englisch-Original,

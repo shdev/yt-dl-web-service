@@ -196,6 +196,13 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 			}
 		}
 		label = profile.Label
+		// Controller-Ruling (Task 8): das clientseitig angereicherte Label
+		// (z. B. "Beste Qualität · de + en (Original)") gilt nur, wenn
+		// tatsächlich Audiospuren gewählt wurden — sonst bleibt profile.Label
+		// maßgeblich, auch wenn das Formular noch ein altes format_label trägt.
+		if req.FormatLabel != "" && len(ids) > 0 {
+			label = req.FormatLabel
+		}
 	} else {
 		if req.AudioOnly && len(ids) > 0 {
 			ids = ids[:1]
@@ -235,15 +242,17 @@ func (s *Server) createPlaylistJobs(w http.ResponseWriter, req createJobsRequest
 		writeError(w, http.StatusBadRequest, "keine Einträge")
 		return
 	}
+	format, multiAudio := playlistFormat(profile)
 	ids := []string{}
 	skipped := 0
 	for _, e := range req.Entries {
 		url := strings.TrimSpace(e.URL)
-		if url == "" || s.isDuplicate(url, profile.Expr) {
+		if url == "" || s.isDuplicate(url, format) {
 			skipped++
 			continue
 		}
-		j := job.New(url, e.Title, profile.Expr, profile.Label, req.PlaylistTitle)
+		j := job.New(url, e.Title, format, profile.Label, req.PlaylistTitle)
+		j.MultiAudio = multiAudio
 		if err := s.store.Add(j); err != nil {
 			s.queue.Kick() // bereits angelegte Jobs nicht stranden lassen
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -253,6 +262,24 @@ func (s *Server) createPlaylistJobs(w http.ResponseWriter, req createJobsRequest
 	}
 	s.queue.Kick()
 	writeJSON(w, http.StatusCreated, map[string]any{"ids": ids, "skipped": skipped})
+}
+
+// playlistFormat baut den Format-Ausdruck für Playlist-Jobs: eine
+// Sprach-Fallback-Kette, die die deutsche Synchro plus Original-Zweitspur
+// bevorzugt, ersatzweise irgendeine deutschsprachige Spur, sonst der
+// bisherige Profil-Ausdruck ("Beste Qualität · de + en (Original)"-Regel
+// aus Backlog-Idee 3, angewandt auf Playlists). MultiAudio ist true, weil
+// die Kette bis zu zwei Audiospuren kombinieren kann (Runner setzt dann
+// --audio-multistreams). Beim Profil "audio" (kein VideoExpr) bleibt alles
+// wie bisher — dort existiert kein Videoteil, mit dem sich mehrere Spuren
+// kombinieren ließen (Ausnahme aus dem Brief).
+func playlistFormat(profile ytdlp.Profile) (format string, multiAudio bool) {
+	if profile.VideoExpr == "" {
+		return profile.Expr, false
+	}
+	format = profile.VideoExpr + "+ba[language^=de]+ba[language_preference>0]/" +
+		profile.VideoExpr + "+ba[language^=de]/" + profile.Expr
+	return format, true
 }
 
 func (s *Server) isDuplicate(url, format string) bool {

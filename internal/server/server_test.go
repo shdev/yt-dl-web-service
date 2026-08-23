@@ -338,6 +338,66 @@ func TestCreateVideoJobWithProfile(t *testing.T) {
 	}
 }
 
+// TestCreateVideoJobProfileFormatLabelOverride: im Profil-Modus mit
+// audio_format_ids muss das clientseitig angereicherte Sprachen-Label
+// (format_label, z. B. "Beste Qualität · de + en (Original)") übernommen
+// werden — sonst geht es verloren, weil ohne diesen Fix immer profile.Label
+// gilt (Controller-Ruling Task 8).
+func TestCreateVideoJobProfileFormatLabelOverride(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "title": "Test",
+		"profile": "best", "audio_format_ids": []string{"140-0", "140-7"},
+		"format_label": "Beste Qualität · de + en (Original)",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].FormatLabel != "Beste Qualität · de + en (Original)" {
+		t.Fatalf("clientseitiges Label muss im Profil-Modus mit IDs übernommen werden: %+v", jobs)
+	}
+}
+
+// TestCreateVideoJobProfileWithoutIDsKeepsProfileLabel: ohne
+// audio_format_ids bleibt profile.Label maßgeblich, selbst wenn ein
+// format_label mitgeschickt wird (Controller-Ruling Task 8) — die
+// Übernahme gilt nur, wenn tatsächlich Audiospuren gewählt wurden.
+func TestCreateVideoJobProfileWithoutIDsKeepsProfileLabel(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "title": "Test",
+		"profile": "best", "format_label": "Sollte ignoriert werden",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].FormatLabel != "Beste Qualität" {
+		t.Fatalf("ohne IDs muss profile.Label gelten: %+v", jobs)
+	}
+}
+
+// TestCreateVideoJobAudioProfileFormatLabelOverride: die Label-Übernahme
+// gilt auch im Profil "audio", dessen ids-Handling die IDs auf die
+// bevorzugte erste Spur reduziert (server.go createVideoJob) — das darf
+// die Label-Übernahme nicht unterlaufen.
+func TestCreateVideoJobAudioProfileFormatLabelOverride(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "title": "Test",
+		"profile": "audio", "audio_format_ids": []string{"140-0"},
+		"format_label": "Nur Audio · de",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].FormatLabel != "Nur Audio · de" {
+		t.Fatalf("Label-Übernahme muss auch im Profil audio gelten: %+v", jobs)
+	}
+}
+
 func TestCreateVideoJobUnknownProfile(t *testing.T) {
 	h, _, _ := newServer(t, fakeProber{})
 	rec := do(t, h, "POST", "/api/jobs", map[string]any{
@@ -359,6 +419,10 @@ func TestCreateVideoJobDuplicate(t *testing.T) {
 	}
 }
 
+// TestCreatePlaylistJobs prüft die Sprach-Fallback-Kette (Task 8, Step 1):
+// bevorzugt deutsche Synchro mit Original-Zweitspur, dann irgendeine
+// deutschsprachige Spur, sonst der bisherige Profil-Ausdruck — plus
+// MultiAudio, weil die Kette bis zu zwei Audiospuren kombinieren kann.
 func TestCreatePlaylistJobs(t *testing.T) {
 	h, st, _ := newServer(t, fakeProber{})
 	rec := do(t, h, "POST", "/api/jobs", map[string]any{
@@ -375,10 +439,37 @@ func TestCreatePlaylistJobs(t *testing.T) {
 	if len(jobs) != 2 {
 		t.Fatalf("2 Jobs erwartet: %+v", jobs)
 	}
+	wantFormat := "bv*[height<=720]+ba[language^=de]+ba[language_preference>0]/" +
+		"bv*[height<=720]+ba[language^=de]/bv*[height<=720]+ba/b[height<=720]"
 	for _, j := range jobs {
-		if j.Format != "bv*[height<=720]+ba/b[height<=720]" || j.PlaylistTitle != "Liste" {
+		if j.Format != wantFormat || j.PlaylistTitle != "Liste" {
 			t.Fatalf("Playlist-Job falsch: %+v", j)
 		}
+		if !j.MultiAudio {
+			t.Fatalf("Playlist-Job muss MultiAudio setzen: %+v", j)
+		}
+	}
+}
+
+// TestCreatePlaylistJobsAudioProfileUnchanged: beim Profil "audio" (kein
+// VideoExpr zum Kombinieren) bleibt der bisherige Expr unverändert und
+// MultiAudio false — die Sprach-Fallback-Kette gilt nur für Profile mit
+// Videoteil (Task 8, Ausnahme aus dem Brief).
+func TestCreatePlaylistJobsAudioProfileUnchanged(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "playlist", "profile": "audio", "playlist_title": "Liste",
+		"entries": []map[string]string{{"url": "https://example.com/1", "title": "Eins"}},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].Format != "ba" {
+		t.Fatalf("Profil audio muss unverändert bleiben: %+v", jobs)
+	}
+	if jobs[0].MultiAudio {
+		t.Fatalf("Profil audio darf MultiAudio nicht setzen: %+v", jobs[0])
 	}
 }
 

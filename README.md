@@ -11,6 +11,13 @@ land directly in a mounted folder (e.g. your media library).
 - Paste a URL, inspect title, thumbnail and every available format (via `yt-dlp -J`)
 - Pick exact video + audio formats, best quality, or audio-only
 - Playlist support: one job per video, with quality profiles (best / ≤1080p / ≤720p / audio only)
+- Multi-language audio: for videos with several audio tracks, downloads the
+  preferred language (German, then English) plus the original track whenever
+  it differs — automatic by default, overridable via language chips
+- Downloads are sorted into `<source>/<channel>/…` folders by default (e.g.
+  `youtube/SomeChannel/…`), configurable via `OUTPUT_TEMPLATE`
+- Job cards show relative timestamps (added / finished) and the final
+  filename once a download is done — click to copy it
 - Parallel downloads (configurable), with live progress, speed and ETA
 - Persistent job queue: survives container restarts, interrupted downloads resume (`--continue`)
 - Retry, cancel and remove jobs from the UI (removing a job never deletes files)
@@ -52,7 +59,7 @@ Before the first start, adjust `docker-compose.yml`:
 |---|---|---|
 | `PORT` | `8080` | HTTP port of the web service |
 | `MAX_CONCURRENT` | `3` | Number of parallel downloads |
-| `OUTPUT_TEMPLATE` | `%(title)s [%(id)s].%(ext)s` | yt-dlp output filename template |
+| `OUTPUT_TEMPLATE` | `%(extractor)s/%(channel,uploader\|Unbekannt)s/%(title)s [%(id)s].%(ext)s` | yt-dlp output filename template |
 | `YTDLP_UPDATE_ON_START` | `true` | Update yt-dlp when the container starts |
 
 | Volume mount | Purpose |
@@ -64,6 +71,38 @@ In-app settings (gear icon) are stored in `/config/settings.json` — currently
 the default format profile preselected after each probe. The gear panel also
 shows the installed yt-dlp version and offers a one-click update
 (`POST /api/ytdlp/update` runs `yt-dlp -U` on the writable copy in `/config/bin`).
+
+### Download folder structure
+
+By default, files land under `<downloads>/<source>/<channel>/<title> [<id>].<ext>`:
+`source` is yt-dlp's normalized extractor name (e.g. `youtube`, `arte`; short
+or alias domains like `youtu.be` map to the same source), `channel` is
+`channel` or `uploader` from the video's metadata, falling back to
+`Unbekannt` when neither is reported. Override the whole layout via
+`OUTPUT_TEMPLATE` (any yt-dlp output template works).
+
+Interrupted downloads resume from a `.part` file that yt-dlp keeps in that
+same nested folder (`--continue`). If you change `OUTPUT_TEMPLATE` while a
+download is queued or in progress, its `.part` file stays under the old
+path and won't be picked up by `--continue` anymore — remove it manually or
+let the retry start over.
+
+## Multi-language audio
+
+For videos with several audio tracks (real dubs, e.g. ARTE's German /
+French / English original, or YouTube's auto-dubs), the app downloads more
+than one track by default: the preferred language — German before English —
+plus the original track whenever it differs from the preferred one. A
+German-dubbed ARTE video, for example, downloads with the German dub and
+the English original in one file. Audio-description tracks are recognized
+and never picked automatically. On videos with 2+ tracks, language chips on
+the format card let you override the selection before starting the
+download; playlist downloads (profile-based, no per-video probe) apply the
+same de-before-en, original-included rule as a best-effort fallback chain.
+
+Combining two audio tracks into one file needs multi-stream muxing
+(`--audio-multistreams`); the container format is then `mp4/mkv` — mp4 when
+the codecs allow it, mkv as the automatic fallback otherwise.
 
 ## Troubleshooting
 
@@ -89,6 +128,10 @@ deno release — the build skips it and the warning remains.
   temp-file + rename). After a restart, interrupted jobs are re-queued and
   resume from their `.part` files.
 - The UI (vanilla JS, Tailwind CSS, German) polls `/api/jobs` every 1.5 s.
+  Each job card shows a relative "added" timestamp, plus a "done"/"finished"
+  one once the job reaches a final state (hover either for the absolute
+  time), and — once a download completes — the final filename with a
+  click-to-copy button.
 - The Docker image is based on `mikenye/youtube-dl` (ships yt-dlp + ffmpeg),
   built for amd64, with deno added on top (amd64/arm64) as the JS runtime
   yt-dlp needs for YouTube.

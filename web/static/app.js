@@ -211,7 +211,13 @@ function renderSelectCard() {
 
 function fillFormatSelects(formats) {
   const isVideo = (f) => f.vcodec && f.vcodec !== "none";
-  const isAudio = (f) => f.acodec && f.acodec !== "none" && (!f.vcodec || f.vcodec === "none");
+  // Spiegelt internal/ytdlp/audiorank.go#isAudioOnly: ein ausdrückliches
+  // vcodec "none" ist die primäre Audio-Kennung (ARTE liefert dafür
+  // "acodec": null — unbekannter acodec zählt dann trotzdem als Ton).
+  // Fehlt vcodec ganz, braucht es weiterhin einen positiven acodec.
+  const isAudio = (f) =>
+    (f.vcodec === "none" && f.acodec !== "none") ||
+    (!f.vcodec && f.acodec && f.acodec !== "none");
   const byRate = (a, b) => (b.tbr || b.abr || 0) - (a.tbr || a.abr || 0);
 
   const vids = formats.filter(isVideo).sort(byRate);

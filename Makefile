@@ -4,7 +4,7 @@ IMAGE := yt-dl-web-service
 GHCR_USER ?= shdev
 TAG ?= latest
 
-.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down clean
+.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down start clean
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY) ./cmd/server
@@ -49,6 +49,22 @@ up:
 
 down:
 	docker compose down
+
+# Muss zum ports-Mapping in docker-compose.yml passen (Default 8080:8080);
+# überschreibbar: make start HOST_PORT=9090
+HOST_PORT ?= 8080
+
+# Image bauen, Container starten und die UI im Browser öffnen, sobald der
+# Dienst antwortet (max. 60 s).
+start: up
+	@ok=0; for i in $$(seq 1 60); do \
+	  curl -fsS -o /dev/null http://localhost:$(HOST_PORT)/ && { ok=1; break; }; \
+	  sleep 1; \
+	done; \
+	test $$ok -eq 1 || { echo "Dienst antwortet nicht auf http://localhost:$(HOST_PORT)"; exit 1; }
+	@command -v open >/dev/null 2>&1 \
+	  && open "http://localhost:$(HOST_PORT)/" \
+	  || xdg-open "http://localhost:$(HOST_PORT)/"
 
 clean:
 	rm -rf bin tmp

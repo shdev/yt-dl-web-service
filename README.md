@@ -27,6 +27,7 @@ Requires Docker with Compose v2. Clone the repository, then:
 ```bash
 mkdir -p data/downloads data/config   # create these first — they must be writable by the user configured below
 make up        # builds the image and starts the container
+make start     # like make up, but also opens the UI in your browser once it responds
 ```
 
 Open `http://<your-host>:8080`, paste a URL, choose a format, hit

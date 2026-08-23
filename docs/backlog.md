@@ -26,3 +26,34 @@ Dateinamen der heruntergeladenen Datei.
 - Gilt „fertig seit“ auch für Fehler/Abbruch (generisches `FinishedAt`)?
 - Bestandsjobs in `jobs.json` haben die neuen Felder nicht — Anzeige muss
   leere Werte verkraften.
+
+## 2. Verzeichnisstruktur aus Metadaten: Quelle/Kanal
+
+**Idee (2026-08-23):** Downloads anhand von Metadaten in Unterverzeichnisse
+sortieren: pro Quelle ein Ordner (alle YouTube-Videos unter `youtube/`,
+Short-Domains wie `youtu.be` normalisiert auf dieselbe Quelle), darunter ein
+Unterverzeichnis je Kanal.
+
+**Ausgangslage (Kurz-Recherche):**
+
+- Der Runner übergibt heute `-o DownloadDir/OUTPUT_TEMPLATE` mit Default
+  `%(title)s [%(id)s].%(ext)s` (Env `OUTPUT_TEMPLATE` überschreibt).
+- yt-dlp kann das fast allein: `%(extractor)s` liefert die normalisierte
+  Quelle („youtube“ — egal ob youtube.com oder youtu.be geteilt wurde,
+  gleicher Extractor), `%(channel)s`/`%(uploader)s` den Kanal. Ein Template
+  wie `%(extractor)s/%(channel,uploader|Unbekannt)s/%(title)s [%(id)s].%(ext)s`
+  erledigt Quelle + Kanal + Fallback ohne eigenes TLD-Parsing.
+
+**Offene Fragen für die Planung:**
+
+- Neuer Default fürs Template oder zusätzlich in den UI-Einstellungen
+  konfigurierbar (z. B. Schalter „nach Quelle/Kanal sortieren“)?
+- Kanal-Feld: `channel` vs. `uploader` (unterscheiden sich z. T.); Fallback
+  für Quellen ohne Kanalbegriff.
+- Groß-/Kleinschreibung und Sonderzeichen der Ordnernamen: yt-dlp
+  sanitisiert selbst; reicht das fürs NAS (SMB), oder `--restrict-filenames`?
+- Wechselwirkung mit `--continue`: Template-Wechsel während laufender/
+  unterbrochener Jobs — Teildateien liegen dann unter dem alten Pfad.
+- Bestandsdateien werden nicht umsortiert (nur neue Downloads).
+- Zusammenspiel mit Idee 1: der erfasste Dateiname enthielte dann den
+  relativen Pfad inkl. Quelle/Kanal.

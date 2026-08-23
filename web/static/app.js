@@ -26,6 +26,18 @@ function esc(s) {
   }[c]));
 }
 
+// Dezente Rückmeldung unten rechts statt alert(); verschwindet nach 4 s.
+function toast(text, kind = "ok") {
+  const cls = { ok: "toast toast-ok", warn: "toast toast-warn", error: "toast toast-err" };
+  const el = document.createElement("div");
+  el.className = cls[kind] || cls.ok;
+  const dot = document.createElement("i");
+  dot.className = "toast-dot";
+  el.append(dot, document.createTextNode(text));
+  $("toast-region").append(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
 function humanSize(bytes) {
   if (!bytes) return "";
   const units = ["B", "KiB", "MiB", "GiB"];
@@ -106,7 +118,7 @@ $("default-profile").addEventListener("change", async () => {
     show($("settings-saved"));
     setTimeout(() => hide($("settings-saved")), 1500);
   } catch (err) {
-    alert(err.message);
+    toast(err.message, "error");
     $("default-profile").value = currentSettings.default_profile;
   }
 });
@@ -229,8 +241,9 @@ async function start() {
       hide($("select-card"));
       $("url-input").value = "";
       await refreshJobs();
+      toast("Download gestartet");
       if (res && res.skipped > 0) {
-        alert(`${res.skipped} Eintrag/Einträge übersprungen (bereits in der Warteschlange oder ohne URL).`);
+        toast(`${res.skipped} Eintrag/Einträge übersprungen (bereits in der Warteschlange oder ohne URL).`, "warn");
       }
     } else {
       const mode = currentMode();
@@ -254,6 +267,7 @@ async function start() {
       hide($("select-card"));
       $("url-input").value = "";
       await refreshJobs();
+      toast("Download gestartet");
     }
   } catch (err) {
     $("start-error").textContent = err.message;
@@ -352,7 +366,7 @@ $("jobs-list").addEventListener("click", async (e) => {
     }
     await refreshJobs();
   } catch (err) {
-    alert(err.message);
+    toast(err.message, "error");
   }
 });
 

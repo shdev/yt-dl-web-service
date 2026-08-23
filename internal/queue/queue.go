@@ -9,6 +9,7 @@ import (
 
 	"ytdlweb/internal/job"
 	"ytdlweb/internal/store"
+	"ytdlweb/internal/ytdlp"
 )
 
 type Runner interface {
@@ -92,7 +93,7 @@ func (q *Queue) runJob(ctx context.Context, cancel context.CancelFunc, j job.Job
 		<-q.sem
 		q.Kick()
 	}()
-	err := q.runner.Run(ctx, j, func(p job.Progress) { q.store.SetProgress(j.ID, p) })
+	err := q.runnerFor(j).Run(ctx, j, func(p job.Progress) { q.store.SetProgress(j.ID, p) })
 	var uerr error
 	switch {
 	case err == nil:
@@ -121,6 +122,31 @@ func (q *Queue) runJob(ctx context.Context, cancel context.CancelFunc, j job.Job
 	if uerr != nil {
 		log.Printf("queue: Zustand von Job %s nicht persistiert: %v", j.ID, uerr)
 	}
+}
+
+// runnerFor liefert den für Job j zu verwendenden Runner. Ist der
+// konfigurierte Runner ein *ytdlp.ExecRunner, wird eine flache Kopie mit
+// einem auf diesen Job gebundenen OnFilename-Callback zurückgegeben: der
+// Callback (Task 5) ist ein Struct-Feld, kein Run()-Parameter — ihn direkt
+// auf dem geteilten Runner zu setzen würde bei mehreren gleichzeitig
+// laufenden Jobs (MaxConcurrent > 1) Job-übergreifend überschrieben, sobald
+// ein zweiter Job dispatcht wird, während der erste noch läuft. Die Kopie
+// übernimmt Bin/DownloadDir/OutputTemplate unverändert und bleibt pro Job
+// unabhängig; der Callback schreibt den relativen Pfad nach job.Filename
+// (letzter Aufruf gewinnt, falls yt-dlp die Zeile theoretisch mehrfach
+// ausgibt — s. Task-5-Hinweis).
+func (q *Queue) runnerFor(j job.Job) Runner {
+	er, ok := q.runner.(*ytdlp.ExecRunner)
+	if !ok {
+		return q.runner
+	}
+	clone := *er
+	clone.OnFilename = func(rel string) {
+		if err := q.store.Update(j.ID, func(x *job.Job) { x.Filename = rel }); err != nil {
+			log.Printf("queue: Dateiname von Job %s nicht persistiert: %v", j.ID, err)
+		}
+	}
+	return &clone
 }
 
 // Cancel bricht einen laufenden oder wartenden Job ab.

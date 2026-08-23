@@ -94,7 +94,33 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusOK, probeResponse(res))
+}
+
+// probeVideoResponse bettet ytdlp.Video ein und ergänzt audio_languages —
+// nur bei Einzelvideos relevant, deshalb kein Feld auf ytdlp.Video selbst.
+type probeVideoResponse struct {
+	ytdlp.Video
+	AudioLanguages []ytdlp.AudioTrack `json:"audio_languages,omitempty"`
+}
+
+type probeResultResponse struct {
+	Type     string              `json:"type"`
+	Video    *probeVideoResponse `json:"video,omitempty"`
+	Playlist *ytdlp.Playlist     `json:"playlist,omitempty"`
+}
+
+// probeResponse reichert die Probe-Antwort bei Einzelvideos um
+// audio_languages an (RankAudio über die gemeldeten Formate, Task 2).
+func probeResponse(res *ytdlp.ProbeResult) probeResultResponse {
+	out := probeResultResponse{Type: res.Type, Playlist: res.Playlist}
+	if res.Video != nil {
+		out.Video = &probeVideoResponse{
+			Video:          *res.Video,
+			AudioLanguages: ytdlp.RankAudio(res.Video.Formats),
+		}
+	}
+	return out
 }
 
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
@@ -107,16 +133,17 @@ type entryPayload struct {
 }
 
 type createJobsRequest struct {
-	Type          string         `json:"type"`
-	URL           string         `json:"url"`
-	Title         string         `json:"title"`
-	FormatVideo   string         `json:"format_video"`
-	FormatAudio   string         `json:"format_audio"`
-	AudioOnly     bool           `json:"audio_only"`
-	FormatLabel   string         `json:"format_label"`
-	Profile       string         `json:"profile"`
-	PlaylistTitle string         `json:"playlist_title"`
-	Entries       []entryPayload `json:"entries"`
+	Type           string         `json:"type"`
+	URL            string         `json:"url"`
+	Title          string         `json:"title"`
+	FormatVideo    string         `json:"format_video"`
+	FormatAudio    string         `json:"format_audio"`
+	AudioOnly      bool           `json:"audio_only"`
+	FormatLabel    string         `json:"format_label"`
+	Profile        string         `json:"profile"`
+	PlaylistTitle  string         `json:"playlist_title"`
+	Entries        []entryPayload `json:"entries"`
+	AudioFormatIDs []string       `json:"audio_format_ids"`
 }
 
 func (s *Server) handleCreateJobs(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +176,19 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 			return
 		}
 		format = profile.Expr
+		// Profil "audio" hat einen leeren VideoExpr — audio_format_ids ohne
+		// Videoteil ergäbe einen kaputten "+id"-Ausdruck, deshalb Fallback
+		// auf den bisherigen Profilausdruck.
+		if len(req.AudioFormatIDs) > 0 && profile.VideoExpr != "" {
+			format = profile.VideoExpr + "+" + strings.Join(req.AudioFormatIDs, "+") + "/" + profile.Expr
+		}
 		label = profile.Label
+	} else if len(req.AudioFormatIDs) > 0 {
+		format = ytdlp.BuildFormatMulti(req.FormatVideo, req.AudioFormatIDs, req.AudioOnly)
+		label = req.FormatLabel
+		if label == "" {
+			label = format
+		}
 	} else {
 		format = ytdlp.BuildFormat(req.FormatVideo, req.FormatAudio, req.AudioOnly)
 		label = req.FormatLabel
@@ -162,6 +201,8 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 		return
 	}
 	j := job.New(url, req.Title, format, label, "")
+	j.AudioFormatIDs = req.AudioFormatIDs
+	j.MultiAudio = len(req.AudioFormatIDs) > 1
 	if err := s.store.Add(j); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

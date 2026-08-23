@@ -11,6 +11,7 @@ import (
 	"ytdlweb/internal/job"
 	"ytdlweb/internal/queue"
 	"ytdlweb/internal/store"
+	"ytdlweb/internal/ytdlp"
 )
 
 // fakeRunner meldet gestartete Jobs und blockiert bis release geschlossen wird.
@@ -164,6 +165,87 @@ func TestQueueShutdownKeepsRunningState(t *testing.T) {
 	got, _ := st.Get(j.ID)
 	if got.State != job.StateRunning {
 		t.Fatalf("Shutdown darf running nicht überschreiben, war %s", got.State)
+	}
+}
+
+// TestQueueSetsFilenameViaRunnerCallback verdrahtet den echten ExecRunner
+// (Task 5) — sein OnFilename-Callback muss den relativen Pfad nach
+// job.Filename schreiben, sobald der Job fertig ist.
+func TestQueueSetsFilenameViaRunnerCallback(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "jobs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel := filepath.Join("youtube", "Kanal", "Titel [id].mkv")
+	t.Setenv("PRINT_LINE", filepath.Join(absDir, rel))
+
+	runner := &ytdlp.ExecRunner{
+		Bin: "../ytdlp/testdata/filepath.sh", DownloadDir: dir,
+		OutputTemplate: "%(title)s.%(ext)s",
+	}
+	q := queue.New(st, runner, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	q.Start(ctx)
+
+	j := job.New("https://example.com/v", "t", "ba", "l", "")
+	if err := st.Add(j); err != nil {
+		t.Fatal(err)
+	}
+	q.Kick()
+	waitState(t, st, j.ID, job.StateDone)
+	got, _ := st.Get(j.ID)
+	if got.Filename != rel {
+		t.Fatalf("Filename falsch: got %q want %q", got.Filename, rel)
+	}
+}
+
+// TestQueueAttributesFilenamesToCorrectConcurrentJob stellt sicher, dass bei
+// mehreren gleichzeitig laufenden Jobs (MaxConcurrent > 1) jeder Job seinen
+// eigenen Dateipfad bekommt — nicht den eines anderen Jobs. Der geteilte
+// *ytdlp.ExecRunner darf dafür nicht als gemeinsam genutztes OnFilename-Feld
+// verdrahtet werden, da das bei Überlappung Job-übergreifend überschreibt.
+func TestQueueAttributesFilenamesToCorrectConcurrentJob(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "jobs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir() // t.TempDir() liefert einen absoluten Pfad.
+
+	runner := &ytdlp.ExecRunner{
+		Bin: "testdata/slow-filepath.sh", DownloadDir: dir,
+		OutputTemplate: "%(title)s.%(ext)s",
+	}
+	q := queue.New(st, runner, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	q.Start(ctx)
+
+	relA := filepath.Join("youtube", "KanalA", "A [a].mkv")
+	relB := filepath.Join("youtube", "KanalB", "B [b].mkv")
+	jA := job.New("https://example.com/a", "a", "ba", "l", "")
+	jB := job.New("https://example.com/b", "b", "ba", "l", "")
+	if err := st.Add(jA); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Add(jB); err != nil {
+		t.Fatal(err)
+	}
+	q.Kick()
+	waitState(t, st, jA.ID, job.StateDone)
+	waitState(t, st, jB.ID, job.StateDone)
+	gotA, _ := st.Get(jA.ID)
+	gotB, _ := st.Get(jB.ID)
+	if gotA.Filename != relA {
+		t.Fatalf("Job A falsch zugeordnet: got %q want %q", gotA.Filename, relA)
+	}
+	if gotB.Filename != relB {
+		t.Fatalf("Job B falsch zugeordnet: got %q want %q", gotB.Filename, relB)
 	}
 }
 

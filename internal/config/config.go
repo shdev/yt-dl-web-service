@@ -19,7 +19,7 @@ func FromEnv(getenv func(string) string) Config {
 	cfg := Config{
 		Port:           8080,
 		MaxConcurrent:  3,
-		OutputTemplate: "%(title)s [%(id)s].%(ext)s",
+		OutputTemplate: "%(extractor)s/%(channel,uploader|Unbekannt)s/%(title)s [%(id)s].%(ext)s",
 		DownloadDir:    "/downloads",
 		ConfigDir:      "/config",
 		UpdateOnStart:  true,

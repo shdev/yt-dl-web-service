@@ -97,6 +97,22 @@ func videoProbe() *ytdlp.ProbeResult {
 	}
 }
 
+// multiLangVideoProbe liefert ein Einzelvideo mit zwei Tonspuren (de, en) —
+// für den audio_languages-Test der Probe-Antwort.
+func multiLangVideoProbe() *ytdlp.ProbeResult {
+	return &ytdlp.ProbeResult{
+		Type: "video",
+		Video: &ytdlp.Video{
+			ID: "abc", Title: "Test Video",
+			Formats: []ytdlp.Format{
+				{ID: "137", VCodec: "vp9", ACodec: "none"},
+				{ID: "140-0", ACodec: "mp4a", VCodec: "none", Language: "de"},
+				{ID: "140-1", ACodec: "mp4a", VCodec: "none", Language: "en"},
+			},
+		},
+	}
+}
+
 func TestHealthz(t *testing.T) {
 	h, _, _ := newServer(t, fakeProber{})
 	rec := do(t, h, "GET", "/healthz", nil)
@@ -217,6 +233,51 @@ func TestProbeErrorBecomes502(t *testing.T) {
 	rec := do(t, h, "POST", "/api/probe", map[string]string{"url": "https://example.invalid"})
 	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "Unsupported URL") {
 		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestProbeReturnsAudioLanguages prüft, dass die Probe-Antwort bei einem
+// mehrsprachigen Einzelvideo audio_languages mit Selected-Flags liefert
+// (RankAudio(video.Formats) — Task 2).
+func TestProbeReturnsAudioLanguages(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{res: multiLangVideoProbe()})
+	rec := do(t, h, "POST", "/api/probe", map[string]string{"url": "https://example.com/v"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Video struct {
+			AudioLanguages []ytdlp.AudioTrack `json:"audio_languages"`
+		} `json:"video"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("Antwort nicht dekodierbar: %v: %s", err, rec.Body.String())
+	}
+	if len(out.Video.AudioLanguages) != 2 {
+		t.Fatalf("2 Audiospuren erwartet: %+v", out.Video.AudioLanguages)
+	}
+	selected := 0
+	for _, tr := range out.Video.AudioLanguages {
+		if tr.Selected {
+			selected++
+		}
+	}
+	if selected == 0 {
+		t.Fatalf("mindestens eine Spur muss selected sein: %+v", out.Video.AudioLanguages)
+	}
+}
+
+// TestProbeSingleLanguageOmitsAudioLanguages: bei einem einsprachigen Video
+// fehlt audio_languages (oder hat höchstens 1 Eintrag) — RankAudio liefert
+// bei fehlenden Sprachinfos nil.
+func TestProbeSingleLanguageOmitsAudioLanguages(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{res: videoProbe()})
+	rec := do(t, h, "POST", "/api/probe", map[string]string{"url": "https://example.com/v"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "audio_languages") {
+		t.Fatalf("audio_languages darf bei fehlenden Sprachinfos nicht auftauchen: %s", rec.Body.String())
 	}
 }
 
@@ -471,5 +532,91 @@ func TestCreateVideoJobWithProfileDuplicate(t *testing.T) {
 	}
 	if rec := do(t, h, "POST", "/api/jobs", body); rec.Code != http.StatusConflict {
 		t.Fatalf("Profil-Duplikat muss 409 liefern, war %d", rec.Code)
+	}
+}
+
+// TestCreateVideoJobProfileWithAudioFormatIDs prüft den Profil-Modus-Ausdruck
+// aus dem Brief: VideoExpr + "+" + join(ids, "+") + "/" + Expr.
+func TestCreateVideoJobProfileWithAudioFormatIDs(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "profile": "1080p",
+		"audio_format_ids": []string{"140-0", "140-1"},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	wantExpr := "bv*[height<=1080]+140-0+140-1/bv*[height<=1080]+ba/b[height<=1080]"
+	if len(jobs) != 1 || jobs[0].Format != wantExpr {
+		t.Fatalf("Format-Ausdruck falsch: %+v (want %q)", jobs, wantExpr)
+	}
+	if len(jobs[0].AudioFormatIDs) != 2 || jobs[0].AudioFormatIDs[0] != "140-0" || jobs[0].AudioFormatIDs[1] != "140-1" {
+		t.Fatalf("AudioFormatIDs falsch: %+v", jobs[0])
+	}
+	if !jobs[0].MultiAudio {
+		t.Fatalf("MultiAudio muss bei >1 IDs gesetzt sein: %+v", jobs[0])
+	}
+}
+
+// TestCreateVideoJobProfileAudioOnlyIgnoresAudioFormatIDs deckt den
+// Sonderfall aus dem Self-Review-Katalog ab: Profil "audio" hat einen leeren
+// VideoExpr — audio_format_ids darf keinen kaputten Ausdruck "+id" erzeugen,
+// sondern muss auf den bisherigen Profilausdruck zurückfallen.
+func TestCreateVideoJobProfileAudioOnlyIgnoresAudioFormatIDs(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "profile": "audio",
+		"audio_format_ids": []string{"140-0", "140-1"},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].Format != "ba" {
+		t.Fatalf("Format-Ausdruck muss auf 'ba' zurückfallen (kein '+id'-Präfix): %+v", jobs)
+	}
+	if strings.HasPrefix(jobs[0].Format, "+") {
+		t.Fatalf("kaputter Ausdruck mit führendem '+': %q", jobs[0].Format)
+	}
+}
+
+// TestCreateVideoJobManualWithAudioFormatIDs prüft den manuellen Modus:
+// BuildFormatMulti(format_video, ids, audio_only).
+func TestCreateVideoJobManualWithAudioFormatIDs(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "format_video": "303",
+		"audio_format_ids": []string{"140-0", "140-1"},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].Format != "303+140-0+140-1" {
+		t.Fatalf("Format-Ausdruck falsch: %+v", jobs)
+	}
+	if !jobs[0].MultiAudio {
+		t.Fatalf("MultiAudio muss bei >1 IDs gesetzt sein: %+v", jobs[0])
+	}
+}
+
+// TestCreateVideoJobSingleAudioFormatIDNoMultiAudio: nur eine ID → MultiAudio
+// bleibt false (Merge-Flags nur bei tatsächlich mehreren Tonspuren nötig).
+func TestCreateVideoJobSingleAudioFormatIDNoMultiAudio(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "format_video": "303",
+		"audio_format_ids": []string{"140-0"},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].Format != "303+140-0" {
+		t.Fatalf("Format-Ausdruck falsch: %+v", jobs)
+	}
+	if jobs[0].MultiAudio {
+		t.Fatalf("MultiAudio darf bei nur 1 ID nicht gesetzt sein: %+v", jobs[0])
 	}
 }

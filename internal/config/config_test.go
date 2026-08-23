@@ -15,7 +15,7 @@ func TestFromEnvDefaults(t *testing.T) {
 	if cfg.Port != 8080 || cfg.MaxConcurrent != 3 {
 		t.Fatalf("Defaults falsch: %+v", cfg)
 	}
-	if cfg.OutputTemplate != "%(title)s [%(id)s].%(ext)s" {
+	if cfg.OutputTemplate != "%(extractor)s/%(channel,uploader|Unbekannt)s/%(title)s [%(id)s].%(ext)s" {
 		t.Fatalf("OUTPUT_TEMPLATE-Default falsch: %q", cfg.OutputTemplate)
 	}
 	if cfg.DownloadDir != "/downloads" || cfg.ConfigDir != "/config" || !cfg.UpdateOnStart {

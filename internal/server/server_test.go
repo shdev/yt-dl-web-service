@@ -267,6 +267,32 @@ func TestProbeReturnsAudioLanguages(t *testing.T) {
 	}
 }
 
+// TestProbeReturnsPlaylist ist ein Regressionstest: probeResponse() darf den
+// Playlist-Zweig (kein Video, also keine audio_languages-Anreicherung) nicht
+// verändern.
+func TestProbeReturnsPlaylist(t *testing.T) {
+	res := &ytdlp.ProbeResult{
+		Type: "playlist",
+		Playlist: &ytdlp.Playlist{
+			Title:   "Liste",
+			Entries: []ytdlp.PlaylistEntry{{URL: "https://example.com/1", Title: "Eins"}},
+		},
+	}
+	h, _, _ := newServer(t, fakeProber{res: res})
+	rec := do(t, h, "POST", "/api/probe", map[string]string{"url": "https://example.com/liste"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"type":"playlist"`) || !strings.Contains(body, `"title":"Liste"`) ||
+		!strings.Contains(body, `"url":"https://example.com/1"`) {
+		t.Fatalf("Playlist-Antwort unvollständig: %s", body)
+	}
+	if strings.Contains(body, `"video"`) || strings.Contains(body, "audio_languages") {
+		t.Fatalf("Playlist-Antwort darf kein video/audio_languages enthalten: %s", body)
+	}
+}
+
 // TestProbeSingleLanguageOmitsAudioLanguages: bei einem einsprachigen Video
 // fehlt audio_languages (oder hat höchstens 1 Eintrag) — RankAudio liefert
 // bei fehlenden Sprachinfos nil.

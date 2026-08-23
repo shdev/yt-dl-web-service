@@ -57,3 +57,12 @@ Unterverzeichnis je Kanal.
 - Bestandsdateien werden nicht umsortiert (nur neue Downloads).
 - Zusammenspiel mit Idee 1: der erfasste Dateiname enthielte dann den
   relativen Pfad inkl. Quelle/Kanal.
+
+**Ergänzung (2026-08-23):** Soll analog für Instagram und Facebook gelten.
+Der Extractor-Ansatz deckt das automatisch ab — yt-dlp hat eigene
+Extractors für beide (`instagram/`, `facebook/`), Short-/Teil-Domains wie
+`fb.watch` oder `instagr.am` normalisieren auf denselben Extractor. Als
+„Kanal“ greift dort der `uploader`-Fallback (Instagram-Account bzw.
+Facebook-Seite). Zu verifizieren bei der Umsetzung: wie die Felder bei
+beiden konkret gefüllt sind (Login-/Cookie-Pflicht bei Instagram kann
+Metadaten beeinflussen).

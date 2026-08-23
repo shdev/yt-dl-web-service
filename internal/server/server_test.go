@@ -585,11 +585,16 @@ func TestCreateVideoJobProfileWithAudioFormatIDs(t *testing.T) {
 	}
 }
 
-// TestCreateVideoJobProfileAudioOnlyIgnoresAudioFormatIDs deckt den
-// Sonderfall aus dem Self-Review-Katalog ab: Profil "audio" hat einen leeren
-// VideoExpr — audio_format_ids darf keinen kaputten Ausdruck "+id" erzeugen,
-// sondern muss auf den bisherigen Profilausdruck zurückfallen.
-func TestCreateVideoJobProfileAudioOnlyIgnoresAudioFormatIDs(t *testing.T) {
+// TestCreateVideoJobProfileAudioOnlyUsesFirstAudioFormatID deckt den
+// Controller-Ruling-Fix ab (Fix-Runde 1): Profil "audio" hat einen leeren
+// VideoExpr — mehrere audio_format_ids ergäben dort keinen Sinn (kein
+// Videoteil zum Kombinieren), deshalb wird auf die erste ID reduziert
+// (bevorzugte Sprache per RankAudio-Konvention). Format-Ausdruck UND
+// persistierter Job-Zustand (AudioFormatIDs, MultiAudio) müssen dieselbe,
+// reduzierte Liste widerspiegeln — vorher liefen sie auseinander
+// (Format="ba" ignorierte die IDs komplett, aber MultiAudio=true und beide
+// IDs wurden trotzdem gespeichert).
+func TestCreateVideoJobProfileAudioOnlyUsesFirstAudioFormatID(t *testing.T) {
 	h, st, _ := newServer(t, fakeProber{})
 	rec := do(t, h, "POST", "/api/jobs", map[string]any{
 		"type": "video", "url": "https://example.com/v", "profile": "audio",
@@ -599,11 +604,60 @@ func TestCreateVideoJobProfileAudioOnlyIgnoresAudioFormatIDs(t *testing.T) {
 		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
 	}
 	jobs := st.List()
-	if len(jobs) != 1 || jobs[0].Format != "ba" {
-		t.Fatalf("Format-Ausdruck muss auf 'ba' zurückfallen (kein '+id'-Präfix): %+v", jobs)
+	if len(jobs) != 1 || jobs[0].Format != "140-0" {
+		t.Fatalf("Format-Ausdruck muss die erste ID sein (kein 'ba'-Fallback, kein '+id'-Präfix): %+v", jobs)
 	}
-	if strings.HasPrefix(jobs[0].Format, "+") {
-		t.Fatalf("kaputter Ausdruck mit führendem '+': %q", jobs[0].Format)
+	if len(jobs[0].AudioFormatIDs) != 1 || jobs[0].AudioFormatIDs[0] != "140-0" {
+		t.Fatalf("AudioFormatIDs muss auf die erste ID reduziert sein: %+v", jobs[0])
+	}
+	if jobs[0].MultiAudio {
+		t.Fatalf("MultiAudio darf im Audio-only-Kontext nicht gesetzt sein: %+v", jobs[0])
+	}
+}
+
+// TestCreateVideoJobProfileAudioWithoutIDsStaysOnBa: ohne audio_format_ids
+// bleibt das Profil "audio" unverändert bei "ba" — der Fix darf das
+// bestehende Verhalten ohne IDs nicht anfassen.
+func TestCreateVideoJobProfileAudioWithoutIDsStaysOnBa(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "profile": "audio",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].Format != "ba" {
+		t.Fatalf("ohne IDs muss Profil 'audio' bei 'ba' bleiben: %+v", jobs)
+	}
+	if jobs[0].MultiAudio || len(jobs[0].AudioFormatIDs) != 0 {
+		t.Fatalf("ohne IDs dürfen AudioFormatIDs/MultiAudio nicht gesetzt sein: %+v", jobs[0])
+	}
+}
+
+// TestCreateVideoJobManualAudioOnlyUsesFirstAudioFormatID deckt denselben
+// Controller-Ruling-Fix im manuellen Modus ab: audio_only=true + mehrere IDs
+// — BuildFormatMulti liefert intern bereits nur die erste Spur, aber vor dem
+// Fix wurden trotzdem beide IDs persistiert und MultiAudio gesetzt, obwohl
+// nur eine Spur tatsächlich geladen wird.
+func TestCreateVideoJobManualAudioOnlyUsesFirstAudioFormatID(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "audio_only": true,
+		"audio_format_ids": []string{"140-0", "140-1"},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 1 || jobs[0].Format != "140-0" {
+		t.Fatalf("Format-Ausdruck muss die erste ID sein: %+v", jobs)
+	}
+	if len(jobs[0].AudioFormatIDs) != 1 || jobs[0].AudioFormatIDs[0] != "140-0" {
+		t.Fatalf("AudioFormatIDs muss auf die erste ID reduziert sein: %+v", jobs[0])
+	}
+	if jobs[0].MultiAudio {
+		t.Fatalf("MultiAudio darf im Audio-only-Kontext nicht gesetzt sein: %+v", jobs[0])
 	}
 }
 

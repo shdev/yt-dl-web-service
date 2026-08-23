@@ -169,6 +169,15 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 		return
 	}
 	var format, label string
+	// ids sind die tatsächlich verwendeten Audiospuren — in Audio-only-
+	// Kontexten (Profil "audio" bzw. audio_only=true) auf die erste Spur
+	// reduziert, weil dort kein Videoteil existiert, mit dem sich mehrere
+	// Spuren kombinieren ließen. Die erste ID ist per RankAudio-Konvention
+	// die bevorzugte Sprache. job.AudioFormatIDs/MultiAudio unten leiten
+	// sich aus diesem (ggf. reduzierten) ids ab, nicht aus req.AudioFormatIDs
+	// direkt — sonst widersprechen sich Job-Zustand und der tatsächlich
+	// gebaute yt-dlp-Ausdruck (Controller-Ruling, Fix-Runde 1).
+	ids := req.AudioFormatIDs
 	if req.Profile != "" {
 		profile, ok := ytdlp.ProfileByKey(req.Profile)
 		if !ok {
@@ -176,21 +185,26 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 			return
 		}
 		format = profile.Expr
-		// Profil "audio" hat einen leeren VideoExpr — audio_format_ids ohne
-		// Videoteil ergäbe einen kaputten "+id"-Ausdruck, deshalb Fallback
-		// auf den bisherigen Profilausdruck.
-		if len(req.AudioFormatIDs) > 0 && profile.VideoExpr != "" {
-			format = profile.VideoExpr + "+" + strings.Join(req.AudioFormatIDs, "+") + "/" + profile.Expr
+		if len(ids) > 0 {
+			if profile.VideoExpr == "" {
+				// Profil "audio": kein Videoteil zum Kombinieren — Format
+				// wird direkt die bevorzugte (erste) Spur.
+				ids = ids[:1]
+				format = ids[0]
+			} else {
+				format = profile.VideoExpr + "+" + strings.Join(ids, "+") + "/" + profile.Expr
+			}
 		}
 		label = profile.Label
-	} else if len(req.AudioFormatIDs) > 0 {
-		format = ytdlp.BuildFormatMulti(req.FormatVideo, req.AudioFormatIDs, req.AudioOnly)
-		label = req.FormatLabel
-		if label == "" {
-			label = format
-		}
 	} else {
-		format = ytdlp.BuildFormat(req.FormatVideo, req.FormatAudio, req.AudioOnly)
+		if req.AudioOnly && len(ids) > 0 {
+			ids = ids[:1]
+		}
+		if len(ids) > 0 {
+			format = ytdlp.BuildFormatMulti(req.FormatVideo, ids, req.AudioOnly)
+		} else {
+			format = ytdlp.BuildFormat(req.FormatVideo, req.FormatAudio, req.AudioOnly)
+		}
 		label = req.FormatLabel
 		if label == "" {
 			label = format
@@ -201,8 +215,8 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 		return
 	}
 	j := job.New(url, req.Title, format, label, "")
-	j.AudioFormatIDs = req.AudioFormatIDs
-	j.MultiAudio = len(req.AudioFormatIDs) > 1
+	j.AudioFormatIDs = ids
+	j.MultiAudio = len(ids) > 1
 	if err := s.store.Add(j); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

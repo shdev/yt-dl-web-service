@@ -8,7 +8,7 @@ import (
 // AudioTrack beschreibt eine wählbare Audiospur eines Einzelvideos.
 type AudioTrack struct {
 	FormatID string `json:"format_id"`
-	Language string `json:"language"` // Kurzform, z. B. "de", "en"; "" wenn unbekannt
+	Language string `json:"language"` // Kurzform, z. B. "de", "en"
 	Label    string `json:"label"`    // z. B. "de", "en (Original)", "de (Audiodeskription)"
 	Original bool   `json:"original"`
 	Selected bool   `json:"selected"` // Default-Auswahl nach Spec-Regel

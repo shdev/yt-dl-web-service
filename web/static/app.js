@@ -266,6 +266,7 @@ function profileLabelWithLangs(ids) {
 document.querySelectorAll('input[name="mode"]').forEach((el) =>
   el.addEventListener("change", updateModeVisibility)
 );
+$("video-profile").addEventListener("change", updateModeVisibility);
 
 function currentMode() {
   return document.querySelector('input[name="mode"]:checked').value;
@@ -274,7 +275,12 @@ function currentMode() {
 function updateModeVisibility() {
   const mode = currentMode();
   const langs = probeResult?.video?.audio_languages || [];
-  if (mode === "profile" && langs.length >= 2) {
+  // Profil "Nur Audio" hat keinen Videoteil zum Kombinieren — die IDs
+  // werden serverseitig auf die erste Spur reduziert (server.go
+  // createVideoJob), Mehrspur-Auswahl greift dort also nicht. Die Chips
+  // blieben sonst sichtbar, obwohl nur die erste angehakte Spur zählt
+  // (Label-Lüge, Final-Review-Fund 3) — deshalb hier zusätzlich ausblenden.
+  if (mode === "profile" && langs.length >= 2 && $("video-profile").value !== "audio") {
     show($("audio-langs"));
   } else {
     hide($("audio-langs"));

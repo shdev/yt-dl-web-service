@@ -135,11 +135,14 @@ Neues Modul `internal/ytdlp/audiorank.go`:
 
 Playlist-Jobs (Profil-basiert, ohne Einzel-Probe) nutzen als
 Format-Ausdruck-Anhang die Best-Effort-Kette:
-`bv*+ba[language^=de]+ba[language_preference>0]/bv*+ba[language^=de]/bv*+ba/b`
+`bv*+ba[language^=de]+ba[format_note*=original][language!^=de]/bv*+ba[language^=de]/bv*+ba/b`
 mit denselben Multistream-/Merge-Optionen. Profile mit Höhen-Filter
-behalten ihre `[height<=…]`-Bedingungen auf dem Videoteil. Quellen ohne
-verwertbare Kennzeichnung (ARTE-Playlists) fallen damit kontrolliert auf
-yt-dlp-Default zurück.
+behalten ihre `[height<=…]`-Bedingungen auf dem Videoteil. Das zweite
+Kettenglied nimmt nur fremdsprachige Originale (`format_note*=original`
+kombiniert mit `language!^=de`), damit die de-Spur nie doppelt gewählt
+wird; Quellen ohne Original-Marker fallen auf die de-Spur allein zurück.
+Quellen ganz ohne verwertbare Kennzeichnung (ARTE-Playlists) fallen damit
+kontrolliert auf yt-dlp-Default zurück.
 
 ## Fehlerfälle
 

@@ -265,19 +265,24 @@ func (s *Server) createPlaylistJobs(w http.ResponseWriter, req createJobsRequest
 }
 
 // playlistFormat baut den Format-Ausdruck für Playlist-Jobs: eine
-// Sprach-Fallback-Kette, die die deutsche Synchro plus Original-Zweitspur
-// bevorzugt, ersatzweise irgendeine deutschsprachige Spur, sonst der
-// bisherige Profil-Ausdruck ("Beste Qualität · de + en (Original)"-Regel
-// aus Backlog-Idee 3, angewandt auf Playlists). MultiAudio ist true, weil
-// die Kette bis zu zwei Audiospuren kombinieren kann (Runner setzt dann
-// --audio-multistreams). Beim Profil "audio" (kein VideoExpr) bleibt alles
-// wie bisher — dort existiert kein Videoteil, mit dem sich mehrere Spuren
-// kombinieren ließen (Ausnahme aus dem Brief).
+// Sprach-Fallback-Kette, die die deutsche Synchro plus fremdsprachige
+// Originalspur bevorzugt, ersatzweise irgendeine deutschsprachige Spur,
+// sonst der bisherige Profil-Ausdruck ("Beste Qualität · de + en
+// (Original)"-Regel aus Backlog-Idee 3, angewandt auf Playlists). Das
+// zweite Kettenglied (Original-Zweitspur) filtert zusätzlich
+// [language!^=de] — sonst würde bei Quellen ohne language_preference eine
+// zweite deutsche Spur (z. B. eine zweite de-Synchro) fälschlich als
+// "Original" mitgewählt und die de-Spur landet doppelt im Ausgabefile
+// (gegen echtes YouTube/ARTE verifiziert, Final-Review-Fund 1). MultiAudio
+// ist true, weil die Kette bis zu zwei Audiospuren kombinieren kann
+// (Runner setzt dann --audio-multistreams). Beim Profil "audio" (kein
+// VideoExpr) bleibt alles wie bisher — dort existiert kein Videoteil, mit
+// dem sich mehrere Spuren kombinieren ließen (Ausnahme aus dem Brief).
 func playlistFormat(profile ytdlp.Profile) (format string, multiAudio bool) {
 	if profile.VideoExpr == "" {
 		return profile.Expr, false
 	}
-	format = profile.VideoExpr + "+ba[language^=de]+ba[language_preference>0]/" +
+	format = profile.VideoExpr + "+ba[language^=de]+ba[format_note*=original][language!^=de]/" +
 		profile.VideoExpr + "+ba[language^=de]/" + profile.Expr
 	return format, true
 }

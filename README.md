@@ -75,7 +75,7 @@ shows the installed yt-dlp version and offers a one-click update
 ### Download folder structure
 
 By default, files land under `<downloads>/<source>/<channel>/<title> [<id>].<ext>`:
-`source` is yt-dlp's normalized extractor name (e.g. `youtube`, `arte`; short
+`source` is yt-dlp's normalized extractor name (e.g. `youtube`, `ArteTV`; short
 or alias domains like `youtu.be` map to the same source), `channel` is
 `channel` or `uploader` from the video's metadata, falling back to
 `Unbekannt` when neither is reported. Override the whole layout via
@@ -85,7 +85,11 @@ Interrupted downloads resume from a `.part` file that yt-dlp keeps in that
 same nested folder (`--continue`). If you change `OUTPUT_TEMPLATE` while a
 download is queued or in progress, its `.part` file stays under the old
 path and won't be picked up by `--continue` anymore — remove it manually or
-let the retry start over.
+let the retry start over. Duplicate detection for playlist jobs works the
+same way: it compares the internal yt-dlp format expression, so after an
+app update, playlist jobs still queued from an older version are no longer
+recognized as duplicates of the same URL (the expression it was built with
+may have changed) — if in doubt, let the queue drain before updating.
 
 ## Multi-language audio
 
@@ -103,6 +107,12 @@ same de-before-en, original-included rule as a best-effort fallback chain.
 Combining two audio tracks into one file needs multi-stream muxing
 (`--audio-multistreams`); the container format is then `mp4/mkv` — mp4 when
 the codecs allow it, mkv as the automatic fallback otherwise.
+
+Playlist downloads always mux with `--merge-output-format mp4/mkv`, even for
+entries that only end up with a single audio track — so a playlist download
+may land as `.mkv` where a single-video download of the same source would
+have stayed `.webm`. Single-video jobs without a multi-track selection are
+unaffected and keep their usual container.
 
 ## Troubleshooting
 

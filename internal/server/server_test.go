@@ -439,7 +439,7 @@ func TestCreatePlaylistJobs(t *testing.T) {
 	if len(jobs) != 2 {
 		t.Fatalf("2 Jobs erwartet: %+v", jobs)
 	}
-	wantFormat := "bv*[height<=720]+ba[language^=de]+ba[language_preference>0]/" +
+	wantFormat := "bv*[height<=720]+ba[language^=de]+ba[format_note*=original][language!^=de]/" +
 		"bv*[height<=720]+ba[language^=de]/bv*[height<=720]+ba/b[height<=720]"
 	for _, j := range jobs {
 		if j.Format != wantFormat || j.PlaylistTitle != "Liste" {
@@ -448,6 +448,76 @@ func TestCreatePlaylistJobs(t *testing.T) {
 		if !j.MultiAudio {
 			t.Fatalf("Playlist-Job muss MultiAudio setzen: %+v", j)
 		}
+	}
+}
+
+// TestCreatePlaylistJobs1080pMp4Chain prüft die Sprach-Fallback-Kette für ein
+// Profil, dessen eigener Expr bereits ein Audio-Fallback-Glied enthält
+// ("+ba[ext=m4a]") — die Kette darf dieses Glied nicht verdrängen, sondern
+// hängt sich nur vor den unveränderten Profil-Ausdruck (Final-Review-Fund 1).
+func TestCreatePlaylistJobs1080pMp4Chain(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "playlist", "profile": "1080p-mp4", "playlist_title": "Liste",
+		"entries": []map[string]string{{"url": "https://example.com/1", "title": "Eins"}},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Code %d: %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	wantFormat := "bv*[height<=1080][ext=mp4]+ba[language^=de]+ba[format_note*=original][language!^=de]/" +
+		"bv*[height<=1080][ext=mp4]+ba[language^=de]/" +
+		"bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4][height<=1080]/b[height<=1080]"
+	if len(jobs) != 1 || jobs[0].Format != wantFormat {
+		t.Fatalf("Playlist-Job (1080p-mp4) falsch: %+v", jobs)
+	}
+	if !jobs[0].MultiAudio {
+		t.Fatalf("Playlist-Job muss MultiAudio setzen: %+v", jobs[0])
+	}
+}
+
+// TestCreatePlaylistJobsDedupe: derselbe Playlist-Eintrag mit demselben
+// Profil zweimal eingereicht — der zweite Request darf keinen neuen Job
+// anlegen, sondern muss ihn als "skipped" zählen, weil der deterministische
+// Kettenausdruck (playlistFormat) beim ersten Job bereits denselben Format-
+// String erzeugt hat (Final-Review-Fund 1, Regressionstest).
+func TestCreatePlaylistJobsDedupe(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	body := map[string]any{
+		"type": "playlist", "profile": "720p", "playlist_title": "Liste",
+		"entries": []map[string]string{{"url": "https://example.com/1", "title": "Eins"}},
+	}
+	rec := do(t, h, "POST", "/api/jobs", body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("erster Request: Code %d: %s", rec.Code, rec.Body.String())
+	}
+	var first struct {
+		IDs     []string `json:"ids"`
+		Skipped int      `json:"skipped"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.IDs) != 1 || first.Skipped != 0 {
+		t.Fatalf("erster Request unerwartet: %+v", first)
+	}
+
+	rec = do(t, h, "POST", "/api/jobs", body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("zweiter Request: Code %d: %s", rec.Code, rec.Body.String())
+	}
+	var second struct {
+		IDs     []string `json:"ids"`
+		Skipped int      `json:"skipped"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if len(second.IDs) != 0 || second.Skipped != 1 {
+		t.Fatalf("zweiter Request muss den Eintrag als Duplikat überspringen: %+v", second)
+	}
+	if len(st.List()) != 1 {
+		t.Fatalf("es darf nur ein Job angelegt worden sein: %+v", st.List())
 	}
 }
 

@@ -1,12 +1,14 @@
 BINARY := bin/app
 # Auf GitHub heißt das Projekt yt-dl-web-service — Image-Name folgt dem Repo.
 IMAGE := yt-dl-web-service
+# Lokales Native-Image (docker-compose/make start) — eigener Name, siehe image-native.
+NATIVE_IMAGE := $(IMAGE)-native
 GHCR_USER ?= shdev
 TAG ?= latest
 # Muss mit ARG TAILWIND_VERSION im Dockerfile übereinstimmen.
 TAILWIND_VERSION := 4.3.3
 
-.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user buildx-builder up down start stop css css-watch clean
+.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down start stop css css-watch clean
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY) ./cmd/server
@@ -27,32 +29,24 @@ run: build
 	PORT=8080 DOWNLOAD_DIR=tmp/downloads CONFIG_DIR=tmp/config \
 		YTDLP_UPDATE_ON_START=false $(BINARY)
 
+# Veröffentlichtes Image (GHCR): amd64. Lokales Setup nutzt $(NATIVE_IMAGE).
 image:
 	docker build --platform linux/amd64 -t $(IMAGE) .
 
-# Image für die aktuelle Plattform des Hosts (z.B. arm64 auf Apple Silicon,
-# amd64 auf Linux-PCs) — schneller lokaler Build ohne Emulation.
+# Image für die aktuelle Plattform des Hosts (z.B. arm64 auf Apple Silicon) —
+# schneller lokaler Build ohne Emulation, eigener Name, damit image und
+# image-native sich nicht gegenseitig den Tag überschreiben.
 # Das Base-Image ist multi-arch (amd64, arm64, arm/v7).
 image-native:
-	docker build -t $(IMAGE) .
+	docker build -t $(NATIVE_IMAGE) .
 
 # Manueller Push zur GitHub Container Registry (kein CI):
 #   make push [TAG=v1]            — Default-User: shdev
 # Voraussetzung (einmalig): docker login ghcr.io mit PAT (Scope write:packages)
-# Baut amd64+arm64 via buildx und pusht EIN Multi-Arch-Manifest.
-# (image/image-native taggen beide $(IMAGE) — ein tag+push eines einzelnen
-# Builds würde :latest sonst auf eine einzige Architektur reduzieren.)
-# Multi-Platform braucht den docker-container-Treiber; der Builder wird
-# bei Bedarf einmalig angelegt.
-BUILDER := multiarch
-
-buildx-builder:
-	@docker buildx inspect $(BUILDER) >/dev/null 2>&1 || \
-		docker buildx create --name $(BUILDER) --driver docker-container
-
-push: check-ghcr-user buildx-builder
-	docker buildx build --builder $(BUILDER) --platform linux/amd64,linux/arm64 \
-		-t ghcr.io/$(GHCR_USER)/$(IMAGE):$(TAG) --push .
+# Pusht das amd64-Image ($(IMAGE)); das native Image bleibt rein lokal.
+push: check-ghcr-user image
+	docker tag $(IMAGE) ghcr.io/$(GHCR_USER)/$(IMAGE):$(TAG)
+	docker push ghcr.io/$(GHCR_USER)/$(IMAGE):$(TAG)
 
 check-ghcr-user:
 	@test -n "$(GHCR_USER)" || { echo "GHCR_USER fehlt: make push GHCR_USER=<github-user>"; exit 1; }

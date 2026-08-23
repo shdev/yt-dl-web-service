@@ -2,9 +2,11 @@ services:
   yt-dl-web:
     build: .
     # NAS-Deployment ohne lokalen Build: "build: ." entfernen und stattdessen
-    # das veröffentlichte Image ziehen:
+    # das veröffentlichte Image ziehen (amd64):
     #   image: ghcr.io/shdev/yt-dl-web-service:latest
-    image: yt-dl-web-service
+    # Lokal baut compose nativ für den Host — eigener Name, damit das
+    # veröffentlichte amd64-Image (make image/push) nicht überschrieben wird.
+    image: yt-dl-web-service-native
     container_name: yt-dl-web
     # UID:GID des NAS-Nutzers, dem die Downloads gehören sollen
     user: "1000:1000"

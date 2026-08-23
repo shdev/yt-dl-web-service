@@ -1,7 +1,22 @@
+# Stage 0: Tailwind-CSS-Build — erzeugt app.css frisch im Image, damit ein
+# veralteter committeter Stand nie ins Binary gelangt.
+# Gepinnt (wie deno weiter unten): reproduzierbar, Bump invalidiert den Cache.
+# Muss mit TAILWIND_VERSION im Makefile übereinstimmen.
+FROM node:22-alpine AS css
+ARG TAILWIND_VERSION=4.3.3
+# Symlink: der v4-Resolver sucht das Paket "tailwindcss" vom Verzeichnis der
+# Input-Datei aufwärts — /node_modules liegt auf diesem Pfad.
+RUN npm install -g @tailwindcss/cli@${TAILWIND_VERSION} \
+ && ln -s /usr/local/lib/node_modules/@tailwindcss/cli/node_modules /node_modules
+WORKDIR /src
+COPY web/ web/
+RUN tailwindcss -i web/src/input.css -o /out/app.css --minify
+
 # Stage 1: Go-Build
 FROM golang:1.24 AS build
 WORKDIR /src
 COPY . .
+COPY --from=css /out/app.css web/static/app.css
 RUN CGO_ENABLED=0 go build -o /app ./cmd/server
 
 # Stage 2: deno — JS-Runtime, die yt-dlp für YouTube braucht (JS-Challenges;

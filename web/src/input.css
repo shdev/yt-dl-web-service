@@ -177,6 +177,18 @@
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
+  .chip {
+    @apply inline-flex cursor-pointer items-center rounded-full border border-edge-strong px-3 py-1 text-[12.5px] font-medium text-muted select-none;
+  }
+  input:checked + .chip {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-soft-text);
+  }
+  input:focus-visible + .chip {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
   .bar {
     @apply h-1 w-full overflow-hidden rounded-full bg-edge;
   }

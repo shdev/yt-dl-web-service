@@ -47,6 +47,37 @@ function humanSize(bytes) {
   return `${n.toFixed(n >= 10 ? 0 : 1)} ${units[i]}`;
 }
 
+// Relative Zeitangabe für Job-Zeitstempel; "" bei fehlendem/ungültigem Wert.
+// Zukunfts-Timestamps (Uhrenversatz) werden auf 0 geklemmt statt negative
+// Werte anzuzeigen.
+function relTime(iso) {
+  const d = new Date(iso);
+  if (!iso || isNaN(d.getTime())) return "";
+  const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (diffSec < 60) return "gerade eben";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `vor ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `vor ${diffH} h`;
+  const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  return `${d.toLocaleDateString("de-DE")} ${time}`;
+}
+
+// Absolutwert für das title-Attribut neben relTime(); "" bei ungültigem Wert.
+function absTime(iso) {
+  const d = new Date(iso);
+  return !iso || isNaN(d.getTime()) ? "" : d.toLocaleString("de-DE");
+}
+
+// Baut das Prefix+Zeit-Fragment für die Job-Meta-Zeile ("hinzugefügt vor 5
+// min"); "" wenn der Zeitstempel fehlt/ungültig ist (dann bleibt das
+// Fragment ganz weg statt eines leeren Rests).
+function timeFragment(prefix, iso) {
+  const rel = relTime(iso);
+  if (!rel) return "";
+  return `${esc(prefix)} <span title="${esc(absTime(iso))}">${esc(rel)}</span>`;
+}
+
 // --- Einstellungen -----------------------------------------------------------
 
 async function loadSettings() {
@@ -168,6 +199,7 @@ function renderSelectCard() {
       hide($("video-thumb"));
     }
     fillFormatSelects(v.formats || []);
+    renderAudioLangChips(v.audio_languages || []);
     $("mode-profile").checked = true;
     $("video-profile").value = currentSettings.default_profile;
     show($("video-options"));
@@ -193,8 +225,36 @@ function fillFormatSelects(formats) {
   $("audio-format").innerHTML = auds.map((f) => {
     const label = [f.acodec, f.abr ? `${Math.round(f.abr)} kbit/s` : "", f.ext, humanSize(f.filesize)]
       .filter(Boolean).join(" · ");
-    return `<option value="${esc(f.format_id)}">${esc(label)}</option>`;
+    // Nur der Sprach-Kurzcode vor dem Bindestrich, analog zu den
+    // Sprach-Chips (z. B. "de-DE" → "de").
+    const prefixed = f.language ? `[${f.language.split("-")[0]}] ${label}` : label;
+    return `<option value="${esc(f.format_id)}">${esc(prefixed)}</option>`;
   }).join("");
+}
+
+// --- Audiosprachen-Chips -----------------------------------------------------
+
+// Chips für die Audiospuren-Vorauswahl im Profil-Modus; Sichtbarkeit steuert
+// updateModeVisibility() (nur ab 2 Einträgen UND Modus "profile").
+function renderAudioLangChips(list) {
+  $("audio-langs-list").innerHTML = list.map((t, i) => `
+    <input class="sr-only" type="checkbox" id="audio-lang-${i}" data-format-id="${esc(t.format_id)}"${t.selected ? " checked" : ""}>
+    <label class="chip" for="audio-lang-${i}">${esc(t.label)}</label>`).join("");
+}
+
+function selectedAudioFormatIds() {
+  return Array.from($("audio-langs-list").querySelectorAll("input:checked"))
+    .map((c) => c.dataset.formatId);
+}
+
+// Ergänzt das Profil-Label um die gewählten Sprachlabels, z. B.
+// "Beste Qualität · de + en (Original)".
+function profileLabelWithLangs(ids) {
+  const profileText = $("video-profile").selectedOptions[0]?.textContent.trim() || "";
+  const langs = (probeResult.video.audio_languages || [])
+    .filter((t) => ids.includes(t.format_id))
+    .map((t) => t.label);
+  return langs.length ? `${profileText} · ${langs.join(" + ")}` : profileText;
 }
 
 document.querySelectorAll('input[name="mode"]').forEach((el) =>
@@ -207,6 +267,12 @@ function currentMode() {
 
 function updateModeVisibility() {
   const mode = currentMode();
+  const langs = probeResult?.video?.audio_languages || [];
+  if (mode === "profile" && langs.length >= 2) {
+    show($("audio-langs"));
+  } else {
+    hide($("audio-langs"));
+  }
   if (mode === "profile") {
     show($("video-profile-wrap"));
     hide($("format-selects"));
@@ -247,22 +313,35 @@ async function start() {
       }
     } else {
       const mode = currentMode();
-      const payload = mode === "profile"
-        ? {
-            type: "video",
-            url: $("url-input").value.trim(),
-            title: probeResult.video.title,
-            profile: $("video-profile").value,
+      let payload;
+      if (mode === "profile") {
+        payload = {
+          type: "video",
+          url: $("url-input").value.trim(),
+          title: probeResult.video.title,
+          profile: $("video-profile").value,
+        };
+        // Chips nur einbeziehen, wenn sie sichtbar sind (Modus "profile" +
+        // ≥2 Sprachen) und mindestens eine angehakt ist — sonst greift der
+        // Server-Fallback (Feld weglassen).
+        if (!$("audio-langs").hidden) {
+          const ids = selectedAudioFormatIds();
+          if (ids.length > 0) {
+            payload.audio_format_ids = ids;
+            payload.format_label = profileLabelWithLangs(ids);
           }
-        : {
-            type: "video",
-            url: $("url-input").value.trim(),
-            title: probeResult.video.title,
-            audio_only: mode === "audio",
-            format_video: mode === "manual" ? $("video-format").value : "",
-            format_audio: $("audio-format").value,
-            format_label: formatLabel(mode),
-          };
+        }
+      } else {
+        payload = {
+          type: "video",
+          url: $("url-input").value.trim(),
+          title: probeResult.video.title,
+          audio_only: mode === "audio",
+          format_video: mode === "manual" ? $("video-format").value : "",
+          format_audio: $("audio-format").value,
+          format_label: formatLabel(mode),
+        };
+      }
       await api("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
       hide($("select-card"));
       $("url-input").value = "";
@@ -312,14 +391,23 @@ function renderJobs(jobs) {
     if (j.playlist_title) {
       title += ` <span class="font-normal text-muted">(${esc(j.playlist_title)})</span>`;
     }
-    const meta = [
+    const metaParts = [
       j.format_label,
       j.progress?.speed,
       j.progress?.eta ? `ETA ${j.progress.eta}` : "",
       j.state === "running" ? `${pct} %` : "",
-    ].filter(Boolean).map(esc).join(" · ");
+    ].filter(Boolean).map(esc);
+    metaParts.push(timeFragment("hinzugefügt", j.created_at));
+    if (j.finished_at) {
+      metaParts.push(timeFragment(j.state === "done" ? "fertig" : "beendet", j.finished_at));
+    }
+    const meta = metaParts.filter(Boolean).join(" · ");
     let extra = j.error
       ? `<div class="col-span-full text-xs text-danger">${esc(j.error)}</div>` : "";
+    if (j.state === "done" && j.filename) {
+      extra += `<div class="col-span-full truncate text-xs text-muted cursor-pointer font-mono"
+        data-action="copy" data-filename="${esc(j.filename)}" title="${esc(j.filename)}">${esc(j.filename)}</div>`;
+    }
     // Bekanntes Muster (z.B. yt-dlp#17456): 403 heißt fast immer, dass
     // yt-dlp veraltet ist — direkt zur Abhilfe verlinken.
     if (j.error && /HTTP Error 403|403: Forbidden/i.test(j.error)) {
@@ -355,6 +443,16 @@ function actionButtons(j) {
 }
 
 $("jobs-list").addEventListener("click", async (e) => {
+  const copyEl = e.target.closest('[data-action="copy"]');
+  if (copyEl) {
+    try {
+      await navigator.clipboard.writeText(copyEl.dataset.filename);
+      toast("Dateiname kopiert");
+    } catch {
+      toast("Kopieren nicht möglich", "error");
+    }
+    return;
+  }
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   const { action, id } = btn.dataset;

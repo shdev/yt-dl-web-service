@@ -69,3 +69,6 @@ go.work.sum
 bin/
 tmp/
 data/
+
+# Superpowers brainstorming sessions
+.superpowers/

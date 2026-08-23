@@ -6,7 +6,7 @@ TAG ?= latest
 # Muss mit ARG TAILWIND_VERSION im Dockerfile übereinstimmen.
 TAILWIND_VERSION := 4.3.3
 
-.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down start stop css css-watch clean
+.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user buildx-builder up down start stop css css-watch clean
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY) ./cmd/server
@@ -42,8 +42,16 @@ image-native:
 # Baut amd64+arm64 via buildx und pusht EIN Multi-Arch-Manifest.
 # (image/image-native taggen beide $(IMAGE) — ein tag+push eines einzelnen
 # Builds würde :latest sonst auf eine einzige Architektur reduzieren.)
-push: check-ghcr-user
-	docker buildx build --platform linux/amd64,linux/arm64 \
+# Multi-Platform braucht den docker-container-Treiber; der Builder wird
+# bei Bedarf einmalig angelegt.
+BUILDER := multiarch
+
+buildx-builder:
+	@docker buildx inspect $(BUILDER) >/dev/null 2>&1 || \
+		docker buildx create --name $(BUILDER) --driver docker-container
+
+push: check-ghcr-user buildx-builder
+	docker buildx build --builder $(BUILDER) --platform linux/amd64,linux/arm64 \
 		-t ghcr.io/$(GHCR_USER)/$(IMAGE):$(TAG) --push .
 
 check-ghcr-user:

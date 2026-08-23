@@ -6,7 +6,7 @@ TAG ?= latest
 # Muss mit ARG TAILWIND_VERSION im Dockerfile übereinstimmen.
 TAILWIND_VERSION := 4.3.3
 
-.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down start css css-watch clean
+.PHONY: build test check fmt-check vet run image image-native push check-ghcr-user up down start stop css css-watch clean
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY) ./cmd/server
@@ -51,6 +51,9 @@ up:
 
 down:
 	docker compose down
+
+# Alias zu down — symmetrisch zu "make start".
+stop: down
 
 # Muss zum ports-Mapping in docker-compose.yml passen (Default 8080:8080);
 # überschreibbar: make start HOST_PORT=9090

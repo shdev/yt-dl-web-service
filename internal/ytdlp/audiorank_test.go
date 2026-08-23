@@ -10,12 +10,13 @@ func intp(i int) *int { return &i }
 
 // arteAudio bildet eine reale ARTE-Probe ab: überall identische
 // language_preference; Original und Audiodeskription stehen nur im Text der
-// format_id.
+// format_id. ARTEs HLS-Spuren melden `"acodec": null` (im Struct also ein
+// leeres ACodec) und weisen sich allein über `vcodec: "none"` als Tonspur aus.
 var arteAudio = []ytdlp.Format{
-	{ID: "VA-STA-audio_0-Deutsch__Audiodeskription_", ACodec: "mp4a", Language: "de", LanguagePreference: intp(110101)},
-	{ID: "VA-STA-audio_0-Englisch__Original_", ACodec: "mp4a", Language: "en", LanguagePreference: intp(110101)},
-	{ID: "VA-STA-audio_0-Französisch", ACodec: "mp4a", Language: "fr", LanguagePreference: intp(110101)},
-	{ID: "VA-STA-audio_0-Deutsch", ACodec: "mp4a", Language: "de", LanguagePreference: intp(110101)},
+	{ID: "VA-STA-audio_0-Deutsch__Audiodeskription_", ACodec: "", VCodec: "none", Language: "de", LanguagePreference: intp(110101)},
+	{ID: "VA-STA-audio_0-Englisch__Original_", ACodec: "", VCodec: "none", Language: "en", LanguagePreference: intp(110101)},
+	{ID: "VA-STA-audio_0-Französisch", ACodec: "", VCodec: "none", Language: "fr", LanguagePreference: intp(110101)},
+	{ID: "VA-STA-audio_0-Deutsch", ACodec: "", VCodec: "none", Language: "de", LanguagePreference: intp(110101)},
 }
 
 // ytAudio bildet eine reale YouTube-Probe ab: Originalspur über
@@ -135,6 +136,20 @@ func TestRankAudioIgnoresNonAudioFormats(t *testing.T) {
 	}
 	checkTracks(t, ytdlp.RankAudio(formats), []wantTrack{
 		{formatID: "140-0", language: "de", label: "de", selected: true},
+	})
+}
+
+// Regel 1, Abgrenzung: Ein ausdrückliches vcodec "none" macht eine Spur auch
+// ohne Audio-Codec zur Tonspur (ARTE-HLS), Storyboards mit acodec "none"
+// bleiben aber draußen — egal ob vcodec "none" oder gar nicht gemeldet wird.
+func TestRankAudioAcceptsUnknownACodecButNotStoryboards(t *testing.T) {
+	formats := []ytdlp.Format{
+		{ID: "sb0", ACodec: "none", VCodec: "none", Ext: "mhtml", Language: "de"},
+		{ID: "sb1", ACodec: "none", VCodec: "", Ext: "mhtml", Language: "de"},
+		{ID: "hls-audio-de", ACodec: "", VCodec: "none", Language: "de"},
+	}
+	checkTracks(t, ytdlp.RankAudio(formats), []wantTrack{
+		{formatID: "hls-audio-de", language: "de", label: "de", selected: true},
 	})
 }
 

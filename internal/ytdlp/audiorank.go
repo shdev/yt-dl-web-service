@@ -93,12 +93,16 @@ func audioCandidates(formats []Format) []*audioCandidate {
 	return cands
 }
 
-// isAudioOnly erkennt reine Tonspuren: Audio-Codec vorhanden, Video-Codec nicht.
+// isAudioOnly erkennt reine Tonspuren. Primäre Kennung ist ein ausdrückliches
+// vcodec "none" — dann zählt die Spur auch dann als Audio, wenn der Audio-Codec
+// unbekannt ist: ARTE liefert für seine HLS-Tonspuren `"acodec": null`. Fehlt
+// die vcodec-Angabe ganz, braucht es umgekehrt einen positiven Audio-Codec.
+// Storyboards (beides "none") bleiben in beiden Fällen draußen.
 func isAudioOnly(f Format) bool {
-	if f.ACodec == "" || f.ACodec == "none" {
-		return false
+	if f.VCodec == "none" {
+		return f.ACodec != "none"
 	}
-	return f.VCodec == "" || f.VCodec == "none"
+	return f.VCodec == "" && f.ACodec != "" && f.ACodec != "none"
 }
 
 // hasMarker prüft format_id und format_note case-insensitiv auf einen der

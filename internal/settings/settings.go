@@ -13,11 +13,13 @@ import (
 // Settings sind die über die UI konfigurierbaren Einstellungen.
 type Settings struct {
 	DefaultProfile string `json:"default_profile"`
+	// Theme: "auto" (folgt der Systemeinstellung), "light" oder "dark".
+	Theme string `json:"theme"`
 }
 
 // defaults sind die Werte, mit denen ein frischer Store startet.
 func defaults() Settings {
-	return Settings{DefaultProfile: "best"}
+	return Settings{DefaultProfile: "best", Theme: "auto"}
 }
 
 type Store struct {
@@ -50,12 +52,19 @@ func (s *Store) Get() Settings {
 	return s.value
 }
 
-// Set setzt die Einstellungen und persistiert sie atomar.
+// Set setzt die Einstellungen und persistiert sie atomar. Schlägt das
+// Persistieren fehl, bleibt der alte Wert auch im Speicher aktiv — sonst
+// würden Reads bis zum Neustart einen nie gespeicherten Zustand liefern.
 func (s *Store) Set(v Settings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	old := s.value
 	s.value = v
-	return s.persistLocked()
+	if err := s.persistLocked(); err != nil {
+		s.value = old
+		return err
+	}
+	return nil
 }
 
 func (s *Store) persistLocked() error {

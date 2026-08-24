@@ -3,7 +3,13 @@
 const $ = (id) => document.getElementById(id);
 
 let probeResult = null;
-let currentSettings = { default_profile: "best" };
+let currentSettings = {
+  default_profile: "best",
+  // Server-gerendertes Theme als Startwert: scheitert der Settings-Fetch,
+  // bleibt der Zustand konsistent zum ausgelieferten data-theme und ein
+  // späterer Save wischt die persistierte Wahl nicht weg.
+  theme: document.documentElement.dataset.theme || "auto",
+};
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -80,14 +86,90 @@ function timeFragment(prefix, iso) {
 
 // --- Einstellungen -----------------------------------------------------------
 
+// Muss zu den --bg-Tokens in input.css und den serverseitig gerenderten
+// theme-color-Metas passen.
+const THEME_COLORS = { dark: "#0f1116", light: "#f6f7f9" };
+
+// applyTheme stellt das Theme sofort um: data-theme am <html> schaltet die
+// CSS-Tokens, die theme-color-Metas ziehen Browser-Chrome/Statusbar nach
+// (bei "auto" media-gebunden wie im Server-Rendering).
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
+  const add = (content, media) => {
+    const m = document.createElement("meta");
+    m.name = "theme-color";
+    if (media) m.media = media;
+    m.content = content;
+    document.head.append(m);
+  };
+  if (theme === "light" || theme === "dark") {
+    add(THEME_COLORS[theme]);
+  } else {
+    add(THEME_COLORS.dark, "(prefers-color-scheme: dark)");
+    add(THEME_COLORS.light, "(prefers-color-scheme: light)");
+  }
+}
+
+function themeRadio(theme) {
+  return $(`theme-${theme}`) || $("theme-auto");
+}
+
 async function loadSettings() {
   try {
     const s = await api("/api/settings");
-    if (s && s.default_profile) currentSettings = s;
+    if (s && s.default_profile) currentSettings = { theme: "auto", ...s };
   } catch { /* Defaults behalten */ }
   $("default-profile").value = currentSettings.default_profile;
+  // Kein applyTheme hier: der Server hat data-theme und Metas schon korrekt
+  // gerendert — nur der Umschalter muss den Zustand anzeigen.
+  themeRadio(currentSettings.theme).checked = true;
 }
 loadSettings();
+
+// saveSettings reiht Saves in eine Kette ein — die PUTs erreichen den
+// Server strikt in Klick-Reihenfolge (sonst könnte ein verspäteter älterer
+// Request einen neueren Stand überschreiben). Der Body entsteht erst beim
+// Abschicken aus dem dann aktuellen Zustand plus Patch, damit parallele
+// Änderungen an anderen Feldern nicht verloren gehen (PUT ersetzt
+// serverseitig alles). isLatest() lässt Fehler-Handler erkennen, ob ihr
+// Save noch der neueste ist — nur dann darf zurückgerollt werden (Muster
+// analog ytdlpVersionSeq).
+let settingsSaveSeq = 0;
+let settingsSaveChain = Promise.resolve();
+
+function saveSettings(patch) {
+  const seq = ++settingsSaveSeq;
+  const done = settingsSaveChain.catch(() => {}).then(async () => {
+    const next = { ...currentSettings, ...patch };
+    await api("/api/settings", { method: "PUT", body: JSON.stringify(next) });
+    currentSettings = next;
+    show($("settings-saved"));
+    setTimeout(() => hide($("settings-saved")), 1500);
+  });
+  settingsSaveChain = done;
+  return { done, isLatest: () => seq === settingsSaveSeq };
+}
+
+for (const id of ["theme-auto", "theme-light", "theme-dark"]) {
+  $(id).addEventListener("change", async () => {
+    if (!$(id).checked) return;
+    applyTheme($(id).value); // sofort umschalten, nicht erst nach dem Roundtrip
+    const save = saveSettings({ theme: $(id).value });
+    try {
+      await save.done;
+    } catch (err) {
+      // Ein neuerer Wechsel läuft schon — dessen Handler verantwortet den
+      // Endzustand, ein Rollback würde ihn nur überschreiben.
+      if (!save.isLatest()) return;
+      toast(err.message, "error");
+      // Zurück auf den letzten bestätigten Stand (nicht den Klick-Snapshot:
+      // der kann von einem inzwischen erfolgreichen älteren Save überholt sein).
+      applyTheme(currentSettings.theme);
+      themeRadio(currentSettings.theme).checked = true;
+    }
+  });
+}
 
 $("settings-btn").addEventListener("click", () => {
   const card = $("settings-card");
@@ -142,13 +224,11 @@ $("ytdlp-update-btn").addEventListener("click", async () => {
 });
 
 $("default-profile").addEventListener("change", async () => {
-  const value = $("default-profile").value;
+  const save = saveSettings({ default_profile: $("default-profile").value });
   try {
-    await api("/api/settings", { method: "PUT", body: JSON.stringify({ default_profile: value }) });
-    currentSettings = { default_profile: value };
-    show($("settings-saved"));
-    setTimeout(() => hide($("settings-saved")), 1500);
+    await save.done;
   } catch (err) {
+    if (!save.isLatest()) return;
     toast(err.message, "error");
     $("default-profile").value = currentSettings.default_profile;
   }

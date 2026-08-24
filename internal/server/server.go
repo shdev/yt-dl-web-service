@@ -79,9 +79,29 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 
+// themeColors: muss zu den --bg-Tokens in web/src/input.css passen — die
+// Werte färben Browser-Chrome/iOS-Statusbar bei erzwungenem Theme.
+var themeColors = map[string]string{"dark": "#0f1116", "light": "#f6f7f9"}
+
+// normalizeTheme klemmt unbekannte/leere Werte (Legacy-Dateien, alte
+// Clients) auf "auto".
+func normalizeTheme(theme string) string {
+	if theme == "light" || theme == "dark" {
+		return theme
+	}
+	return "auto"
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.indexTmpl.Execute(w, map[string]any{"Profiles": ytdlp.Profiles}); err != nil {
+	theme := normalizeTheme(s.settings.Get().Theme)
+	err := s.indexTmpl.Execute(w, map[string]any{
+		"Profiles": ytdlp.Profiles,
+		"Theme":    theme,
+		// Leer bei "auto": dann rendern media-gebundene Metas beide Farben.
+		"ThemeColor": themeColors[theme],
+	})
+	if err != nil {
 		log.Printf("index-template: %v", err)
 	}
 }
@@ -417,6 +437,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := ytdlp.ProfileByKey(set.DefaultProfile); !ok {
 		set.DefaultProfile = "best"
 	}
+	set.Theme = normalizeTheme(set.Theme)
 	writeJSON(w, http.StatusOK, set)
 }
 
@@ -428,6 +449,16 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, ok := ytdlp.ProfileByKey(set.DefaultProfile); !ok {
 		writeError(w, http.StatusBadRequest, "unbekanntes Profil")
+		return
+	}
+	// Fehlendes theme-Feld (alte Clients) wird als "auto" gespeichert;
+	// explizit falsche Werte sind ein Fehler.
+	switch set.Theme {
+	case "":
+		set.Theme = "auto"
+	case "auto", "light", "dark":
+	default:
+		writeError(w, http.StatusBadRequest, "unbekanntes Theme")
 		return
 	}
 	if err := s.settings.Set(set); err != nil {

@@ -79,10 +79,23 @@
   [hidden] {
     display: none !important;
   }
+  html {
+    /* Hintergrund auch auf html: im iOS-Standalone-Modus (black-translucent)
+       scheint sonst Weiß hinter Statusbar und Overscroll-Bereich durch. */
+    background: var(--bg);
+    /* Kein Rubber-Band-Springen der ganzen Seite beim Overscroll. */
+    overscroll-behavior-y: none;
+  }
   body {
     background: var(--bg);
     color: var(--text);
     -webkit-font-smoothing: antialiased;
+    /* Notch/Home-Indicator im Standalone-Modus (viewport-fit=cover):
+       außerhalb von iOS-Standalone sind die env()-Werte schlicht 0. */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
   button {
     cursor: pointer;
@@ -108,6 +121,15 @@
   .input,
   .select {
     @apply w-full rounded-lg border border-edge-strong bg-bg px-3 py-2 text-sm text-text;
+  }
+  /* iOS Safari zoomt automatisch in fokussierte Felder mit font-size < 16px —
+     die Hauptursache für das "Reinspringen" auf dem iPhone. Auf Touch-Geräten
+     deshalb 16px statt text-sm (14px); Desktop bleibt unverändert. */
+  @media (pointer: coarse) {
+    .input,
+    .select {
+      font-size: 16px;
+    }
   }
   .input::placeholder {
     @apply text-dim;
@@ -196,7 +218,13 @@
     @apply block h-full rounded-full bg-accent;
   }
   .toast-region {
-    @apply fixed right-5 bottom-5 z-50 flex flex-col items-end gap-2;
+    @apply fixed z-50 flex flex-col items-end gap-2;
+    /* Fixed-Elemente positionieren sich gegen den Viewport — das Safe-Area-
+       Padding auf body wirkt hier nicht. Ohne die env()-Offsets ragt der
+       Toast im iOS-Standalone-Modus (viewport-fit=cover) in Home-Indicator-
+       bzw. Landscape-Notch-Zone; außerhalb iOS ist env() schlicht 0. */
+    right: calc(1.25rem + env(safe-area-inset-right));
+    bottom: calc(1.25rem + env(safe-area-inset-bottom));
   }
   .toast {
     @apply flex items-center gap-2 rounded-[9px] border border-edge-strong bg-surface px-3.5 py-2.5 text-[12.5px] text-text shadow-lg;

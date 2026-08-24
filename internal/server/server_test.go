@@ -144,6 +144,74 @@ func TestIndexAndStatic(t *testing.T) {
 	}
 }
 
+// TestIndexPWAHead: die Seite muss sich als Home-Screen-App auf iOS
+// installieren lassen (Apple-Meta-Tags, Manifest, Icon) und der Viewport
+// muss den Fokus-Auto-Zoom unterbinden (maximum-scale=1).
+func TestIndexPWAHead(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	body := do(t, h, "GET", "/", nil).Body.String()
+	for _, want := range []string{
+		"maximum-scale=1",
+		"viewport-fit=cover",
+		`name="apple-mobile-web-app-capable" content="yes"`,
+		`name="apple-mobile-web-app-status-bar-style"`,
+		`rel="manifest" href="/manifest.webmanifest"`,
+		`rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Index-Head: %q fehlt", want)
+		}
+	}
+}
+
+func TestManifest(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "GET", "/manifest.webmanifest", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Manifest-Route: %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/manifest+json" {
+		t.Errorf("Content-Type: %q", ct)
+	}
+	var m struct {
+		Display  string `json:"display"`
+		StartURL string `json:"start_url"`
+		Scope    string `json:"scope"`
+		Icons    []struct {
+			Src string `json:"src"`
+		} `json:"icons"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("Manifest kein gültiges JSON: %v", err)
+	}
+	if m.Display != "standalone" || m.StartURL != "/" || m.Scope != "/" {
+		t.Errorf("display=%q start_url=%q scope=%q", m.Display, m.StartURL, m.Scope)
+	}
+	if len(m.Icons) == 0 {
+		t.Error("Manifest ohne Icons")
+	}
+	for _, ic := range m.Icons {
+		if rec := do(t, h, "GET", ic.Src, nil); rec.Code != http.StatusOK {
+			t.Errorf("Manifest-Icon %s: %d", ic.Src, rec.Code)
+		}
+	}
+}
+
+// TestNoStoreCacheControl: nichts darf clientseitig gecacht werden — jede
+// Antwort (UI, Assets, API) trägt Cache-Control: no-store.
+func TestNoStoreCacheControl(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	for _, path := range []string{"/", "/static/app.js", "/static/app.css", "/manifest.webmanifest", "/api/jobs"} {
+		rec := do(t, h, "GET", path, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d", path, rec.Code)
+		}
+		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s: Cache-Control %q, erwartet no-store", path, cc)
+		}
+	}
+}
+
 func TestYtdlpVersion(t *testing.T) {
 	h, _, _ := newServerYtdlp(t, fakeProber{}, fakeYtdlp{version: "2026.08.19"})
 	rec := do(t, h, "GET", "/api/ytdlp", nil)

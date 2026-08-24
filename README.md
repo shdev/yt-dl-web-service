@@ -124,6 +124,40 @@ may land as `.mkv` where a single-video download of the same source would
 have stayed `.webm`. Single-video jobs without a multi-track selection are
 unaffected and keep their usual container.
 
+## Sharing links from other apps
+
+The UI accepts a shared link via query parameters: `/?url=<video-url>`
+prefills the URL field and runs the analysis; add `&start=1` to also start
+the download with your default profile right away. The parameters are
+removed from the address bar immediately, so a reload never re-triggers
+anything.
+
+**Android**: the web app manifest declares a share target — install the
+PWA ("Add to Home Screen"), and it shows up directly in the system share
+menu.
+
+**iPhone/iPad**: iOS has no Web Share Target support, so a web app cannot
+appear in the share sheet by itself. A Shortcut fills the gap:
+
+1. **Shortcuts** app → "+", name it e.g. `yt-dl`.
+2. Add **"URL-encode"** (input: *Shortcut Input*).
+3. Add **"Open URLs"** with
+   `http://<host>:8080/?start=1&url=` followed by the *URL-encoded text*
+   variable.
+4. In the info panel (ⓘ) enable **"Show in Share Sheet"** and limit the
+   accepted types to **URLs**.
+
+YouTube app → Share → `yt-dl` then opens the web UI, which analyzes the
+link and starts the download with the default profile (drop `start=1` if
+you want to pick the format manually). Note that iOS opens the link in the
+browser, not inside the installed home-screen app — the queued download is
+the same either way.
+
+Fully headless alternative (no browser window, single videos): replace
+steps 2–3 with **"Get contents of URL"** → POST to
+`http://<host>:8080/api/jobs`, request body JSON:
+`{"type":"video","url":"<Shortcut Input>","profile":"best"}`.
+
 ## Troubleshooting
 
 **`ERROR: unable to download video data: HTTP Error 403: Forbidden` (YouTube)**

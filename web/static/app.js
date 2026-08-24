@@ -25,6 +25,16 @@ async function api(path, options = {}) {
 function show(el) { el.hidden = false; }
 function hide(el) { el.hidden = true; }
 
+// --- Zoom-Sperre (iOS) -------------------------------------------------------
+
+// iOS ignoriert user-scalable=no/maximum-scale beim Fingerzoom — die (Apple-
+// spezifischen) gesture-Events sind der wirksame Hebel, den Pinch wirklich
+// zu unterbinden (explizite Anforderung, siehe Viewport-Kommentar im
+// Template; Doppeltipp-Zoom blockt touch-action in input.css).
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+}
+
 function esc(s) {
   // Escapt auch Quotes — der Wert landet teils in Attribut-Kontexten.
   return String(s ?? "").replace(/[&<>"'`]/g, (c) => ({
@@ -125,7 +135,7 @@ async function loadSettings() {
   // gerendert — nur der Umschalter muss den Zustand anzeigen.
   themeRadio(currentSettings.theme).checked = true;
 }
-loadSettings();
+const settingsLoaded = loadSettings();
 
 // saveSettings reiht Saves in eine Kette ein — die PUTs erreichen den
 // Server strikt in Klick-Reihenfolge (sonst könnte ein verspäteter älterer
@@ -562,3 +572,33 @@ $("jobs-list").addEventListener("click", async (e) => {
 
 refreshJobs();
 setInterval(refreshJobs, 1500);
+
+// --- Geteilte Links (?url=… bzw. share_target) -------------------------------
+
+// Übernimmt einen per Query übergebenen Link: ein iOS-Kurzbefehl im
+// Teilen-Menü öffnet /?url=…, das Android-Teilen-Menü liefert per
+// share_target url/text/title. Das Feld wird vorbefüllt und analysiert;
+// mit start=1 startet der Download direkt mit dem Standard-Profil. Die
+// Query verschwindet sofort aus der Adresszeile, damit ein Reload nicht
+// erneut analysiert oder gar noch einmal startet.
+async function handleSharedUrl() {
+  const params = new URLSearchParams(location.search);
+  // Manche Apps legen den Link ins text-Feld statt url — dann die erste
+  // http(s)-URL daraus ziehen.
+  const shared = params.get("url") ||
+    ((params.get("text") || "").match(/https?:\/\/\S+/) || [""])[0];
+  const autostart = params.get("start") === "1";
+  if (params.has("url") || params.has("text") || params.has("title") || params.has("start")) {
+    history.replaceState(null, "", location.pathname);
+  }
+  if (!shared) return;
+  $("url-input").value = shared;
+  await settingsLoaded; // Standard-Profil muss für die Vorauswahl geladen sein
+  await probe();
+  // probe() fängt Fehler selbst ab; Autostart nur bei erfolgreicher
+  // Analyse (Auswahlkarte sichtbar).
+  if (autostart && probeResult && !$("select-card").hidden) {
+    await start();
+  }
+}
+handleSharedUrl();

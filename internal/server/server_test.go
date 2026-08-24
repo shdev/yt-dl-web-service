@@ -152,6 +152,7 @@ func TestIndexPWAHead(t *testing.T) {
 	body := do(t, h, "GET", "/", nil).Body.String()
 	for _, want := range []string{
 		"maximum-scale=1",
+		"user-scalable=no",
 		"viewport-fit=cover",
 		`name="apple-mobile-web-app-capable" content="yes"`,
 		`name="apple-mobile-web-app-status-bar-style"`,
@@ -180,12 +181,26 @@ func TestManifest(t *testing.T) {
 		Icons    []struct {
 			Src string `json:"src"`
 		} `json:"icons"`
+		// share_target: geteilte Links landen als GET-Query auf / —
+		// Android-Teilen-Menü; die url/text-Übernahme macht app.js.
+		ShareTarget struct {
+			Action string `json:"action"`
+			Method string `json:"method"`
+			Params struct {
+				URL  string `json:"url"`
+				Text string `json:"text"`
+			} `json:"params"`
+		} `json:"share_target"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
 		t.Fatalf("Manifest kein gültiges JSON: %v", err)
 	}
 	if m.Display != "standalone" || m.StartURL != "/" || m.Scope != "/" {
 		t.Errorf("display=%q start_url=%q scope=%q", m.Display, m.StartURL, m.Scope)
+	}
+	if m.ShareTarget.Action != "/" || m.ShareTarget.Method != "GET" ||
+		m.ShareTarget.Params.URL != "url" || m.ShareTarget.Params.Text != "text" {
+		t.Errorf("share_target unvollständig: %+v", m.ShareTarget)
 	}
 	if len(m.Icons) == 0 {
 		t.Error("Manifest ohne Icons")

@@ -27,12 +27,16 @@ function hide(el) { el.hidden = true; }
 
 // --- Zoom-Sperre (iOS) -------------------------------------------------------
 
-// iOS ignoriert user-scalable=no/maximum-scale beim Fingerzoom — die (Apple-
-// spezifischen) gesture-Events sind der wirksame Hebel, den Pinch wirklich
-// zu unterbinden (explizite Anforderung, siehe Viewport-Kommentar im
-// Template; Doppeltipp-Zoom blockt touch-action in input.css).
-for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
-  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+// iOS ignoriert user-scalable=no/maximum-scale beim Fingerzoom — die
+// WebKit-gesture-Events sind der wirksame Hebel, den Pinch wirklich zu
+// unterbinden (explizite Anforderung, siehe Viewport-Kommentar im Template;
+// Doppeltipp-Zoom blockt touch-action in input.css). Nur auf Touch-Geräten:
+// macOS-Safari feuert dieselben Events beim Trackpad-Pinch, und am Desktop
+// soll Zoomen möglich bleiben (maxTouchPoints ist dort 0, auf iPhone/iPad 5).
+if (navigator.maxTouchPoints > 0) {
+  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  }
 }
 
 function esc(s) {
@@ -249,19 +253,25 @@ $("default-profile").addEventListener("change", async () => {
 $("probe-btn").addEventListener("click", probe);
 $("url-input").addEventListener("keydown", (e) => { if (e.key === "Enter") probe(); });
 
+// Liefert bei Erfolg das Probe-Ergebnis, sonst null — Aufrufer (Autostart)
+// können damit prüfen, ob GENAU ihre Analyse gelungen ist; das globale
+// probeResult kann eine parallel gestartete Probe überschrieben haben.
 async function probe() {
   const url = $("url-input").value.trim();
   hide($("probe-error"));
   hide($("select-card"));
-  if (!url) return;
+  if (!url) return null;
   $("probe-btn").disabled = true;
   $("probe-btn").textContent = "Analysiere…";
   try {
-    probeResult = await api("/api/probe", { method: "POST", body: JSON.stringify({ url }) });
+    const result = await api("/api/probe", { method: "POST", body: JSON.stringify({ url }) });
+    probeResult = result;
     renderSelectCard();
+    return result;
   } catch (err) {
     $("probe-error").textContent = err.message;
     show($("probe-error"));
+    return null;
   } finally {
     $("probe-btn").disabled = false;
     $("probe-btn").textContent = "Analysieren";
@@ -594,10 +604,14 @@ async function handleSharedUrl() {
   if (!shared) return;
   $("url-input").value = shared;
   await settingsLoaded; // Standard-Profil muss für die Vorauswahl geladen sein
-  await probe();
-  // probe() fängt Fehler selbst ab; Autostart nur bei erfolgreicher
-  // Analyse (Auswahlkarte sichtbar).
-  if (autostart && probeResult && !$("select-card").hidden) {
+  const result = await probe();
+  // Autostart nur, wenn GENAU diese Analyse gelungen ist (result), keine
+  // parallele Probe sie überholt hat (result === probeResult) und das Feld
+  // noch unverändert die geteilte URL trägt — start() liest die URL aus dem
+  // DOM, und die Seite ist während der Analyse voll bedienbar. Sonst könnte
+  // ein unbestätigter Download einer ganz anderen URL starten.
+  if (autostart && result && result === probeResult &&
+    $("url-input").value.trim() === shared && !$("select-card").hidden) {
     await start();
   }
 }

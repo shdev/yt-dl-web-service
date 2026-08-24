@@ -2,13 +2,14 @@
 <html lang="de" data-theme="{{.Theme}}">
 <head>
   <meta charset="utf-8">
-  <!-- maximum-scale=1 unterbindet den iOS-Auto-Zoom beim Fokussieren von
-       Eingabefeldern; Pinch-Zoom bleibt auf iOS trotzdem möglich (seit iOS 10
-       aus Accessibility-Gründen). Bewusster Tradeoff: Chrome/Android sperrt
-       damit den Pinch-Zoom komplett — Zielplattform ist das iPhone.
+  <!-- Zoom ist komplett deaktiviert (explizite Anforderung, bewusst gegen
+       WCAG 1.4.4): maximum-scale=1 stoppt den iOS-Auto-Zoom beim Input-
+       Fokus, user-scalable=no den Pinch-Zoom auf Android. iOS ignoriert
+       beides beim Fingerzoom — dort fangen die gesture-Event-Handler in
+       app.js den Pinch ab (plus touch-action in input.css gegen Doppeltipp).
        viewport-fit=cover für die Notch-Bereiche im Standalone-Modus
        (Safe-Area-Padding im CSS). -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   {{if .ThemeColor}}<meta name="theme-color" content="{{.ThemeColor}}">
   {{else}}<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1116">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f7f9">

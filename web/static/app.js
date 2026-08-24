@@ -25,6 +25,20 @@ async function api(path, options = {}) {
 function show(el) { el.hidden = false; }
 function hide(el) { el.hidden = true; }
 
+// --- Zoom-Sperre (iOS) -------------------------------------------------------
+
+// iOS ignoriert user-scalable=no/maximum-scale beim Fingerzoom — die
+// WebKit-gesture-Events sind der wirksame Hebel, den Pinch wirklich zu
+// unterbinden (explizite Anforderung, siehe Viewport-Kommentar im Template;
+// Doppeltipp-Zoom blockt touch-action in input.css). Nur auf Touch-Geräten:
+// macOS-Safari feuert dieselben Events beim Trackpad-Pinch, und am Desktop
+// soll Zoomen möglich bleiben (maxTouchPoints ist dort 0, auf iPhone/iPad 5).
+if (navigator.maxTouchPoints > 0) {
+  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  }
+}
+
 function esc(s) {
   // Escapt auch Quotes — der Wert landet teils in Attribut-Kontexten.
   return String(s ?? "").replace(/[&<>"'`]/g, (c) => ({
@@ -125,7 +139,7 @@ async function loadSettings() {
   // gerendert — nur der Umschalter muss den Zustand anzeigen.
   themeRadio(currentSettings.theme).checked = true;
 }
-loadSettings();
+const settingsLoaded = loadSettings();
 
 // saveSettings reiht Saves in eine Kette ein — die PUTs erreichen den
 // Server strikt in Klick-Reihenfolge (sonst könnte ein verspäteter älterer
@@ -239,19 +253,25 @@ $("default-profile").addEventListener("change", async () => {
 $("probe-btn").addEventListener("click", probe);
 $("url-input").addEventListener("keydown", (e) => { if (e.key === "Enter") probe(); });
 
+// Liefert bei Erfolg das Probe-Ergebnis, sonst null — Aufrufer (Autostart)
+// können damit prüfen, ob GENAU ihre Analyse gelungen ist; das globale
+// probeResult kann eine parallel gestartete Probe überschrieben haben.
 async function probe() {
   const url = $("url-input").value.trim();
   hide($("probe-error"));
   hide($("select-card"));
-  if (!url) return;
+  if (!url) return null;
   $("probe-btn").disabled = true;
   $("probe-btn").textContent = "Analysiere…";
   try {
-    probeResult = await api("/api/probe", { method: "POST", body: JSON.stringify({ url }) });
+    const result = await api("/api/probe", { method: "POST", body: JSON.stringify({ url }) });
+    probeResult = result;
     renderSelectCard();
+    return result;
   } catch (err) {
     $("probe-error").textContent = err.message;
     show($("probe-error"));
+    return null;
   } finally {
     $("probe-btn").disabled = false;
     $("probe-btn").textContent = "Analysieren";
@@ -562,3 +582,37 @@ $("jobs-list").addEventListener("click", async (e) => {
 
 refreshJobs();
 setInterval(refreshJobs, 1500);
+
+// --- Geteilte Links (?url=… bzw. share_target) -------------------------------
+
+// Übernimmt einen per Query übergebenen Link: ein iOS-Kurzbefehl im
+// Teilen-Menü öffnet /?url=…, das Android-Teilen-Menü liefert per
+// share_target url/text/title. Das Feld wird vorbefüllt und analysiert;
+// mit start=1 startet der Download direkt mit dem Standard-Profil. Die
+// Query verschwindet sofort aus der Adresszeile, damit ein Reload nicht
+// erneut analysiert oder gar noch einmal startet.
+async function handleSharedUrl() {
+  const params = new URLSearchParams(location.search);
+  // Manche Apps legen den Link ins text-Feld statt url — dann die erste
+  // http(s)-URL daraus ziehen.
+  const shared = params.get("url") ||
+    ((params.get("text") || "").match(/https?:\/\/\S+/) || [""])[0];
+  const autostart = params.get("start") === "1";
+  if (params.has("url") || params.has("text") || params.has("title") || params.has("start")) {
+    history.replaceState(null, "", location.pathname);
+  }
+  if (!shared) return;
+  $("url-input").value = shared;
+  await settingsLoaded; // Standard-Profil muss für die Vorauswahl geladen sein
+  const result = await probe();
+  // Autostart nur, wenn GENAU diese Analyse gelungen ist (result), keine
+  // parallele Probe sie überholt hat (result === probeResult) und das Feld
+  // noch unverändert die geteilte URL trägt — start() liest die URL aus dem
+  // DOM, und die Seite ist während der Analyse voll bedienbar. Sonst könnte
+  // ein unbestätigter Download einer ganz anderen URL starten.
+  if (autostart && result && result === probeResult &&
+    $("url-input").value.trim() === shared && !$("select-card").hidden) {
+    await start();
+  }
+}
+handleSharedUrl();

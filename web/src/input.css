@@ -123,6 +123,13 @@
     /* Kein Rubber-Band-Springen der ganzen Seite beim Overscroll. */
     overscroll-behavior-y: none;
   }
+  html,
+  body {
+    /* Nur Scrollen erlauben: blockiert Doppeltipp-Zoom (und wo der Browser
+       es respektiert auch Pinch) — Teil der Zoom-Sperre, siehe Viewport-
+       Kommentar in index.html und die gesture-Handler in app.js. */
+    touch-action: pan-x pan-y;
+  }
   body {
     background: var(--bg);
     color: var(--text);

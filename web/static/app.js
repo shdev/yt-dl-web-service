@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 
 let probeResult = null;
-let currentSettings = { default_profile: "best" };
+let currentSettings = { default_profile: "best", theme: "auto" };
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -80,14 +80,71 @@ function timeFragment(prefix, iso) {
 
 // --- Einstellungen -----------------------------------------------------------
 
+// Muss zu den --bg-Tokens in input.css und den serverseitig gerenderten
+// theme-color-Metas passen.
+const THEME_COLORS = { dark: "#0f1116", light: "#f6f7f9" };
+
+// applyTheme stellt das Theme sofort um: data-theme am <html> schaltet die
+// CSS-Tokens, die theme-color-Metas ziehen Browser-Chrome/Statusbar nach
+// (bei "auto" media-gebunden wie im Server-Rendering).
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
+  const add = (content, media) => {
+    const m = document.createElement("meta");
+    m.name = "theme-color";
+    if (media) m.media = media;
+    m.content = content;
+    document.head.append(m);
+  };
+  if (theme === "light" || theme === "dark") {
+    add(THEME_COLORS[theme]);
+  } else {
+    add(THEME_COLORS.dark, "(prefers-color-scheme: dark)");
+    add(THEME_COLORS.light, "(prefers-color-scheme: light)");
+  }
+}
+
+function themeRadio(theme) {
+  return $(`theme-${theme}`) || $("theme-auto");
+}
+
 async function loadSettings() {
   try {
     const s = await api("/api/settings");
-    if (s && s.default_profile) currentSettings = s;
+    if (s && s.default_profile) currentSettings = { theme: "auto", ...s };
   } catch { /* Defaults behalten */ }
   $("default-profile").value = currentSettings.default_profile;
+  // Kein applyTheme hier: der Server hat data-theme und Metas schon korrekt
+  // gerendert — nur der Umschalter muss den Zustand anzeigen.
+  themeRadio(currentSettings.theme).checked = true;
 }
 loadSettings();
+
+// saveSettings schickt immer den kompletten Settings-Zustand — PUT ersetzt
+// serverseitig alles, ein Teil-Update würde andere Felder zurücksetzen.
+async function saveSettings(next) {
+  await api("/api/settings", { method: "PUT", body: JSON.stringify(next) });
+  currentSettings = next;
+  show($("settings-saved"));
+  setTimeout(() => hide($("settings-saved")), 1500);
+}
+
+for (const id of ["theme-auto", "theme-light", "theme-dark"]) {
+  $(id).addEventListener("change", async () => {
+    if (!$(id).checked) return;
+    const prev = currentSettings.theme;
+    const next = $(id).value;
+    applyTheme(next); // sofort umschalten, nicht erst nach dem Roundtrip
+    try {
+      await saveSettings({ ...currentSettings, theme: next });
+    } catch (err) {
+      toast(err.message, "error");
+      applyTheme(prev);
+      themeRadio(prev).checked = true;
+    }
+  });
+}
 
 $("settings-btn").addEventListener("click", () => {
   const card = $("settings-card");
@@ -144,10 +201,7 @@ $("ytdlp-update-btn").addEventListener("click", async () => {
 $("default-profile").addEventListener("change", async () => {
   const value = $("default-profile").value;
   try {
-    await api("/api/settings", { method: "PUT", body: JSON.stringify({ default_profile: value }) });
-    currentSettings = { default_profile: value };
-    show($("settings-saved"));
-    setTimeout(() => hide($("settings-saved")), 1500);
+    await saveSettings({ ...currentSettings, default_profile: value });
   } catch (err) {
     toast(err.message, "error");
     $("default-profile").value = currentSettings.default_profile;

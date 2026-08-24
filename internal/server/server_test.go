@@ -736,6 +736,89 @@ func TestPutSettingsValidThenGet(t *testing.T) {
 	}
 }
 
+// --- Theme-Umschalter --------------------------------------------------------
+
+func TestGetSettingsDefaultTheme(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "GET", "/api/settings", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"theme":"auto"`) {
+		t.Fatalf("Theme-Default fehlt: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPutSettingsTheme(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "PUT", "/api/settings",
+		map[string]string{"default_profile": "best", "theme": "dark"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("PUT Code %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, h, "GET", "/api/settings", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"theme":"dark"`) {
+		t.Fatalf("GET nach PUT: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPutSettingsEmptyThemeNormalizesToAuto: ein PUT ohne theme-Feld (alte
+// Clients bzw. reine Profil-Änderung) darf das Theme nicht auf einen
+// ungültigen Leerwert setzen — es wird als "auto" gespeichert.
+func TestPutSettingsEmptyThemeNormalizesToAuto(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "PUT", "/api/settings", map[string]string{"default_profile": "best"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("PUT Code %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, h, "GET", "/api/settings", nil)
+	if !strings.Contains(rec.Body.String(), `"theme":"auto"`) {
+		t.Fatalf("Theme nicht normalisiert: %s", rec.Body.String())
+	}
+}
+
+func TestPutSettingsUnknownTheme(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "PUT", "/api/settings",
+		map[string]string{"default_profile": "best", "theme": "neon"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unbekanntes Theme: %d", rec.Code)
+	}
+}
+
+// TestIndexRendersTheme: das gespeicherte Theme landet serverseitig als
+// data-theme am <html>-Element (kein Theme-Flackern beim Laden) und steuert
+// die theme-color-Metas; die Settings-Card enthält den Umschalter.
+func TestIndexRendersTheme(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+
+	body := do(t, h, "GET", "/", nil).Body.String()
+	if !strings.Contains(body, `<html lang="de" data-theme="auto">`) {
+		t.Errorf("data-theme=auto fehlt im Index")
+	}
+	// Auto: zwei media-gebundene theme-color-Metas.
+	if !strings.Contains(body, `name="theme-color" media="(prefers-color-scheme: dark)"`) ||
+		!strings.Contains(body, `name="theme-color" media="(prefers-color-scheme: light)"`) {
+		t.Errorf("media-gebundene theme-color-Metas fehlen bei auto")
+	}
+	for _, id := range []string{`id="theme-auto"`, `id="theme-light"`, `id="theme-dark"`} {
+		if !strings.Contains(body, id) {
+			t.Errorf("Theme-Umschalter: %s fehlt", id)
+		}
+	}
+
+	if rec := do(t, h, "PUT", "/api/settings",
+		map[string]string{"default_profile": "best", "theme": "dark"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("PUT: %d", rec.Code)
+	}
+	body = do(t, h, "GET", "/", nil).Body.String()
+	if !strings.Contains(body, `<html lang="de" data-theme="dark">`) {
+		t.Errorf("data-theme=dark fehlt nach PUT")
+	}
+	// Erzwungenes Theme: eine feste theme-color statt der media-Metas.
+	if !strings.Contains(body, `<meta name="theme-color" content="#0f1116">`) ||
+		strings.Contains(body, `media="(prefers-color-scheme: light)"`) {
+		t.Errorf("feste theme-color bei dark fehlt bzw. media-Metas noch da")
+	}
+}
+
 func TestPutSettingsUnknownProfile(t *testing.T) {
 	h, _, _ := newServer(t, fakeProber{})
 	rec := do(t, h, "PUT", "/api/settings", map[string]string{"default_profile": "gibtsnicht"})

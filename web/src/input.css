@@ -3,9 +3,16 @@
 @source "../templates/index.html";
 @source "../static/app.js";
 
-/* Design-Tokens (Spec §Design-Tokens): dunkel ist Default, hell folgt der
-   Systemeinstellung. Utilities referenzieren ausschließlich diese Tokens. */
+/* Design-Tokens (Spec §Design-Tokens): dunkel ist Default. Hell greift
+   entweder explizit (data-theme="light", Umschalter in den Einstellungen,
+   serverseitig gerendert) oder über die Systemeinstellung, solange kein
+   explizites Dunkel (data-theme="dark") gewählt ist. Utilities
+   referenzieren ausschließlich diese Tokens.
+   color-scheme lässt UA-Widgets (Select-Picker, Scrollbars) dem aktiven
+   Theme folgen. Die theme-color-Werte in index.html und app.js müssen zu
+   den --bg-Tokens hier passen. */
 :root {
+  color-scheme: light dark;
   --bg: #0f1116;
   --surface: #151821;
   --edge: #232834;
@@ -27,8 +34,38 @@
   --card-shadow: none;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* Die beiden Hell-Blöcke müssen identisch bleiben (bewusst dupliziert statt
+   light-dark(), das erst ab Safari 17.5 verfügbar ist): einmal explizit
+   gewählt, einmal via System — Letzteres nur, wenn nicht explizit dunkel. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --edge: #e7eaef;
+  --edge-strong: #d6dbe3;
+  --text: #1d2129;
+  --muted: #667085;
+  --dim: #98a2b3;
+  --accent: #4c6cf5;
+  --on-accent: #ffffff;
+  --accent-soft: #e3e9fe;
+  --accent-soft-text: #3652c8;
+  --ok: #12924f;
+  --ok-edge: #b8e6cd;
+  --danger: #b42318;
+  --danger-edge: #f4b6b0;
+  --warn: #b45309;
+  --warn-edge: #f2d9a7;
+  --run-edge: #c9d4fd;
+  --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     --bg: #f6f7f9;
     --surface: #ffffff;
     --edge: #e7eaef;

@@ -13,11 +13,13 @@ import (
 // Settings sind die über die UI konfigurierbaren Einstellungen.
 type Settings struct {
 	DefaultProfile string `json:"default_profile"`
+	// Theme: "auto" (folgt der Systemeinstellung), "light" oder "dark".
+	Theme string `json:"theme"`
 }
 
 // defaults sind die Werte, mit denen ein frischer Store startet.
 func defaults() Settings {
-	return Settings{DefaultProfile: "best"}
+	return Settings{DefaultProfile: "best", Theme: "auto"}
 }
 
 type Store struct {

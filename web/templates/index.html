@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="{{.Theme}}">
 <head>
   <meta charset="utf-8">
   <!-- maximum-scale=1 unterbindet den iOS-Auto-Zoom beim Fokussieren von
@@ -9,8 +9,10 @@
        viewport-fit=cover für die Notch-Bereiche im Standalone-Modus
        (Safe-Area-Padding im CSS). -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1116">
+  {{if .ThemeColor}}<meta name="theme-color" content="{{.ThemeColor}}">
+  {{else}}<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1116">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f7f9">
+  {{end}}
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <!-- "default" statt "black-translucent": adaptiert seit iOS 13 an Hell/
@@ -46,6 +48,17 @@
             {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
             {{end}}</select>
           <div class="mt-1.5 text-xs text-ok" id="settings-saved" hidden>Gespeichert ✓</div>
+        </div>
+        <div>
+          <div class="field-label">Erscheinungsbild</div>
+          <div class="seg" role="radiogroup" aria-label="Erscheinungsbild">
+            <input class="sr-only" type="radio" name="theme" id="theme-auto" value="auto" checked>
+            <label class="seg-label" for="theme-auto">System</label>
+            <input class="sr-only" type="radio" name="theme" id="theme-light" value="light">
+            <label class="seg-label" for="theme-light">Hell</label>
+            <input class="sr-only" type="radio" name="theme" id="theme-dark" value="dark">
+            <label class="seg-label" for="theme-dark">Dunkel</label>
+          </div>
         </div>
         <div class="h-px bg-edge"></div>
         <div class="flex flex-wrap items-center gap-2.5 text-sm text-muted">

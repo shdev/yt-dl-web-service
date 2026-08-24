@@ -44,6 +44,7 @@ func New(st *store.Store, q *queue.Queue, p Prober, set *settings.Store, y Ytdlp
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.Handle("GET /static/", http.FileServerFS(web.FS))
+	mux.HandleFunc("GET /manifest.webmanifest", s.handleManifest)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("POST /api/probe", s.handleProbe)
 	mux.HandleFunc("GET /api/jobs", s.handleListJobs)
@@ -55,7 +56,17 @@ func New(st *store.Store, q *queue.Queue, p Prober, set *settings.Store, y Ytdlp
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	mux.HandleFunc("GET /api/ytdlp", s.handleYtdlpVersion)
 	mux.HandleFunc("POST /api/ytdlp/update", s.handleYtdlpUpdate)
-	return mux
+	return noStore(mux)
+}
+
+// noStore verbietet jedes clientseitige Caching — UI, Assets und API werden
+// bei jedem Aufruf frisch geladen (bewusst gibt es auch keinen Service
+// Worker). Gilt global: der Server liefert ausschließlich UI und API aus.
+func noStore(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		h.ServeHTTP(w, r)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -77,6 +88,19 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
+}
+
+// handleManifest liefert das Web-App-Manifest mit korrektem MIME-Type aus —
+// der FileServer würde .webmanifest nur als text/plain sniffen. Die Route
+// liegt an der Root, damit iOS/Chrome den Scope "/" akzeptieren.
+func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
+	data, err := web.FS.ReadFile("static/manifest.webmanifest")
+	if err != nil {
+		http.Error(w, "manifest fehlt", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/manifest+json")
+	_, _ = w.Write(data)
 }
 
 func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {

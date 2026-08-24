@@ -11,6 +11,10 @@ func TestEmbeddedAssets(t *testing.T) {
 		"templates/index.html",
 		"static/app.js",
 		"static/app.css",
+		"static/manifest.webmanifest",
+		"static/icons/apple-touch-icon.png",
+		"static/icons/icon-192.png",
+		"static/icons/icon-512.png",
 	}
 	for _, f := range files {
 		data, err := web.FS.ReadFile(f)

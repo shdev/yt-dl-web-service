@@ -63,6 +63,24 @@ func TestSetPersistsAndReloads(t *testing.T) {
 	}
 }
 
+// TestSetKeepsOldValueOnPersistError: schlägt das Schreiben fehl (hier:
+// Zielverzeichnis existiert nicht), darf der neue Wert nicht im Speicher
+// hängen bleiben — Get muss weiter den letzten persistierten Stand liefern.
+func TestSetKeepsOldValueOnPersistError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fehlt", "settings.json")
+	st, err := settings.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Set(settings.Settings{DefaultProfile: "720p", Theme: "dark"}); err == nil {
+		t.Fatal("Set muss bei fehlendem Verzeichnis fehlschlagen")
+	}
+	got := st.Get()
+	if got.DefaultProfile != "best" || got.Theme != "auto" {
+		t.Fatalf("nach Persist-Fehler darf der Wert nicht wechseln: %+v", got)
+	}
+}
+
 func TestOpenCorruptFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := os.WriteFile(path, []byte("kein json"), 0o644); err != nil {

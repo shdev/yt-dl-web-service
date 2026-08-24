@@ -3,7 +3,13 @@
 const $ = (id) => document.getElementById(id);
 
 let probeResult = null;
-let currentSettings = { default_profile: "best", theme: "auto" };
+let currentSettings = {
+  default_profile: "best",
+  // Server-gerendertes Theme als Startwert: scheitert der Settings-Fetch,
+  // bleibt der Zustand konsistent zum ausgelieferten data-theme und ein
+  // späterer Save wischt die persistierte Wahl nicht weg.
+  theme: document.documentElement.dataset.theme || "auto",
+};
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -121,27 +127,46 @@ async function loadSettings() {
 }
 loadSettings();
 
-// saveSettings schickt immer den kompletten Settings-Zustand — PUT ersetzt
-// serverseitig alles, ein Teil-Update würde andere Felder zurücksetzen.
-async function saveSettings(next) {
-  await api("/api/settings", { method: "PUT", body: JSON.stringify(next) });
-  currentSettings = next;
-  show($("settings-saved"));
-  setTimeout(() => hide($("settings-saved")), 1500);
+// saveSettings reiht Saves in eine Kette ein — die PUTs erreichen den
+// Server strikt in Klick-Reihenfolge (sonst könnte ein verspäteter älterer
+// Request einen neueren Stand überschreiben). Der Body entsteht erst beim
+// Abschicken aus dem dann aktuellen Zustand plus Patch, damit parallele
+// Änderungen an anderen Feldern nicht verloren gehen (PUT ersetzt
+// serverseitig alles). isLatest() lässt Fehler-Handler erkennen, ob ihr
+// Save noch der neueste ist — nur dann darf zurückgerollt werden (Muster
+// analog ytdlpVersionSeq).
+let settingsSaveSeq = 0;
+let settingsSaveChain = Promise.resolve();
+
+function saveSettings(patch) {
+  const seq = ++settingsSaveSeq;
+  const done = settingsSaveChain.catch(() => {}).then(async () => {
+    const next = { ...currentSettings, ...patch };
+    await api("/api/settings", { method: "PUT", body: JSON.stringify(next) });
+    currentSettings = next;
+    show($("settings-saved"));
+    setTimeout(() => hide($("settings-saved")), 1500);
+  });
+  settingsSaveChain = done;
+  return { done, isLatest: () => seq === settingsSaveSeq };
 }
 
 for (const id of ["theme-auto", "theme-light", "theme-dark"]) {
   $(id).addEventListener("change", async () => {
     if (!$(id).checked) return;
-    const prev = currentSettings.theme;
-    const next = $(id).value;
-    applyTheme(next); // sofort umschalten, nicht erst nach dem Roundtrip
+    applyTheme($(id).value); // sofort umschalten, nicht erst nach dem Roundtrip
+    const save = saveSettings({ theme: $(id).value });
     try {
-      await saveSettings({ ...currentSettings, theme: next });
+      await save.done;
     } catch (err) {
+      // Ein neuerer Wechsel läuft schon — dessen Handler verantwortet den
+      // Endzustand, ein Rollback würde ihn nur überschreiben.
+      if (!save.isLatest()) return;
       toast(err.message, "error");
-      applyTheme(prev);
-      themeRadio(prev).checked = true;
+      // Zurück auf den letzten bestätigten Stand (nicht den Klick-Snapshot:
+      // der kann von einem inzwischen erfolgreichen älteren Save überholt sein).
+      applyTheme(currentSettings.theme);
+      themeRadio(currentSettings.theme).checked = true;
     }
   });
 }
@@ -199,10 +224,11 @@ $("ytdlp-update-btn").addEventListener("click", async () => {
 });
 
 $("default-profile").addEventListener("change", async () => {
-  const value = $("default-profile").value;
+  const save = saveSettings({ default_profile: $("default-profile").value });
   try {
-    await saveSettings({ ...currentSettings, default_profile: value });
+    await save.done;
   } catch (err) {
+    if (!save.isLatest()) return;
     toast(err.message, "error");
     $("default-profile").value = currentSettings.default_profile;
   }

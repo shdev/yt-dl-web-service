@@ -51,12 +51,15 @@
         </div>
         <div>
           <div class="field-label">Erscheinungsbild</div>
+          <!-- checked serverseitig: der Umschalter zeigt auch dann den
+               gespeicherten Zustand, wenn der Settings-Fetch des Clients
+               fehlschlägt. -->
           <div class="seg" role="radiogroup" aria-label="Erscheinungsbild">
-            <input class="sr-only" type="radio" name="theme" id="theme-auto" value="auto" checked>
+            <input class="sr-only" type="radio" name="theme" id="theme-auto" value="auto"{{if eq .Theme "auto"}} checked{{end}}>
             <label class="seg-label" for="theme-auto">System</label>
-            <input class="sr-only" type="radio" name="theme" id="theme-light" value="light">
+            <input class="sr-only" type="radio" name="theme" id="theme-light" value="light"{{if eq .Theme "light"}} checked{{end}}>
             <label class="seg-label" for="theme-light">Hell</label>
-            <input class="sr-only" type="radio" name="theme" id="theme-dark" value="dark">
+            <input class="sr-only" type="radio" name="theme" id="theme-dark" value="dark"{{if eq .Theme "dark"}} checked{{end}}>
             <label class="seg-label" for="theme-dark">Dunkel</label>
           </div>
         </div>

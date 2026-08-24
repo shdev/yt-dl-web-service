@@ -812,6 +812,12 @@ func TestIndexRendersTheme(t *testing.T) {
 	if !strings.Contains(body, `<html lang="de" data-theme="dark">`) {
 		t.Errorf("data-theme=dark fehlt nach PUT")
 	}
+	// checked muss serverseitig am gespeicherten Theme hängen — der Client
+	// zeigt sonst nach fehlgeschlagenem Settings-Fetch "System" an.
+	if !strings.Contains(body, `id="theme-dark" value="dark" checked`) ||
+		strings.Contains(body, `id="theme-auto" value="auto" checked`) {
+		t.Errorf("checked folgt nicht dem gespeicherten Theme")
+	}
 	// Erzwungenes Theme: eine feste theme-color statt der media-Metas.
 	if !strings.Contains(body, `<meta name="theme-color" content="#0f1116">`) ||
 		strings.Contains(body, `media="(prefers-color-scheme: light)"`) {

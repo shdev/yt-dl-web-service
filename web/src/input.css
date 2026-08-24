@@ -218,7 +218,13 @@
     @apply block h-full rounded-full bg-accent;
   }
   .toast-region {
-    @apply fixed right-5 bottom-5 z-50 flex flex-col items-end gap-2;
+    @apply fixed z-50 flex flex-col items-end gap-2;
+    /* Fixed-Elemente positionieren sich gegen den Viewport — das Safe-Area-
+       Padding auf body wirkt hier nicht. Ohne die env()-Offsets ragt der
+       Toast im iOS-Standalone-Modus (viewport-fit=cover) in Home-Indicator-
+       bzw. Landscape-Notch-Zone; außerhalb iOS ist env() schlicht 0. */
+    right: calc(1.25rem + env(safe-area-inset-right));
+    bottom: calc(1.25rem + env(safe-area-inset-bottom));
   }
   .toast {
     @apply flex items-center gap-2 rounded-[9px] border border-edge-strong bg-surface px-3.5 py-2.5 text-[12.5px] text-text shadow-lg;

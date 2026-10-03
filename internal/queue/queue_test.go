@@ -280,9 +280,13 @@ type fakeProber struct {
 	// ignoreCtx: Probe wartet nur auf block und liefert das Ergebnis auch bei
 	// abgebrochenem Context (Abbruch trifft genau nach erfolgreicher Analyse).
 	ignoreCtx bool
+	returned  chan struct{} // gesetzt: Probe meldet das Verlassen (gepuffert)
 }
 
 func (f *fakeProber) Probe(ctx context.Context, url string) (*ytdlp.ProbeResult, error) {
+	if f.returned != nil {
+		defer func() { f.returned <- struct{}{} }()
+	}
 	f.mu.Lock()
 	f.calls++
 	res, err := f.res, f.err
@@ -602,7 +606,7 @@ func TestQueueShutdownDuringProbeKeepsRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fp := &fakeProber{res: probeVideo(), block: make(chan struct{}), called: make(chan struct{}, 4)}
+	fp := &fakeProber{res: probeVideo(), block: make(chan struct{}), called: make(chan struct{}, 4), returned: make(chan struct{}, 4)}
 	rr := &recordingRunner{}
 	q := queue.New(st, rr, 1, queue.WithProber(fp))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -615,9 +619,22 @@ func TestQueueShutdownDuringProbeKeepsRunning(t *testing.T) {
 		t.Fatal("Probe wurde nicht aufgerufen")
 	}
 	cancel() // Shutdown (Root-Context), kein Nutzer-Cancel
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-fp.returned:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Probe kehrt nach Shutdown nicht zurück")
+	}
+	// Die Nachbehandlung in runJob läuft nach der Rückkehr des Probers; kurz
+	// abwarten, damit ein fälschliches Überschreiben des Zustands auffiele.
+	time.Sleep(100 * time.Millisecond)
 	got, _ := st.Get(j.ID)
 	if got.State != job.StateRunning {
 		t.Fatalf("Shutdown darf running nicht überschreiben, war %s", got.State)
+	}
+	if !got.NeedsProbe {
+		t.Fatal("NeedsProbe muss true bleiben")
+	}
+	if rr.ran(j.ID) {
+		t.Fatal("Runner darf nicht laufen")
 	}
 }

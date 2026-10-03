@@ -230,6 +230,10 @@
       height: 44px;
       right: 0;
     }
+    /* Platz für den 44px breiten Leeren-Button */
+    .url-field .input {
+      padding-right: 48px;
+    }
     .icon-btn {
       width: 44px;
       height: 44px;

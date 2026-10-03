@@ -296,7 +296,16 @@ $("url-clear").addEventListener("click", () => {
 // --- Analyse ---------------------------------------------------------------
 
 $("probe-btn").addEventListener("click", probe);
-$("url-input").addEventListener("keydown", (e) => { if (e.key === "Enter") probe(); });
+$("url-input").addEventListener("keydown", (e) => { if (e.key === "Enter" && urlBusy === 0) probe(); });
+
+// Laufende Requests der URL-Karte (Analyse, Direkt-Download): beide Buttons
+// bleiben gesperrt, bis der letzte fertig ist; Enter im Feld respektiert das.
+let urlBusy = 0;
+function urlBusyStep(delta) {
+  urlBusy += delta;
+  $("probe-btn").disabled = urlBusy > 0;
+  $("direct-btn").disabled = urlBusy > 0;
+}
 
 // Liefert bei Erfolg das Probe-Ergebnis, sonst null — Aufrufer (Autostart)
 // können damit prüfen, ob GENAU ihre Analyse gelungen ist; das globale
@@ -306,8 +315,7 @@ async function probe() {
   hide($("probe-error"));
   hide($("select-card"));
   if (!url) return null;
-  $("probe-btn").disabled = true;
-  $("direct-btn").disabled = true;
+  urlBusyStep(1);
   $("probe-btn").textContent = "Analysiere…";
   try {
     const result = await api("/api/probe", { method: "POST", body: JSON.stringify({ url }) });
@@ -317,12 +325,13 @@ async function probe() {
     renderSelectCard();
     return result;
   } catch (err) {
+    // Fehler einer veralteten Analyse (Feld inzwischen geändert) nicht anzeigen.
+    if ($("url-input").value.trim() !== url) return null;
     $("probe-error").textContent = err.message;
     show($("probe-error"));
     return null;
   } finally {
-    $("probe-btn").disabled = false;
-    $("direct-btn").disabled = false;
+    urlBusyStep(-1);
     $("probe-btn").textContent = "Analysieren";
   }
 }
@@ -334,23 +343,26 @@ async function startDirect() {
   const url = $("url-input").value.trim();
   if (!url) return;
   hide($("probe-error"));
-  $("probe-btn").disabled = true;
-  $("direct-btn").disabled = true;
+  urlBusyStep(1);
+  // Verknüpfung vor dem await merken: Feld und Verknüpfung können sich
+  // während des Requests ändern und dürfen dann nicht angetastet werden.
+  const link = replaceLink;
   try {
     const body = { type: "direct", url, profile: $("direct-profile").value };
-    if (replaceLink && replaceLink.url === url) body.replace = replaceLink.id;
+    if (link && link.url === url) body.replace = link.id;
     await api("/api/jobs", { method: "POST", body: JSON.stringify(body) });
-    setUrl("");
-    closeSelection();
-    clearReplaceLink();
+    if ($("url-input").value.trim() === url) {
+      setUrl("");
+      closeSelection();
+    }
+    if (replaceLink === link) clearReplaceLink();
     await refreshJobs();
     toast("Download hinzugefügt");
   } catch (err) {
     $("probe-error").textContent = err.message;
     show($("probe-error"));
   } finally {
-    $("probe-btn").disabled = false;
-    $("direct-btn").disabled = false;
+    urlBusyStep(-1);
   }
 }
 
@@ -482,7 +494,10 @@ $("start-btn").addEventListener("click", start);
 async function start() {
   hide($("start-error"));
   // Ersetzt-Verknüpfung nur, solange das Feld noch die verknüpfte URL trägt.
-  const replace = replaceLink && $("url-input").value.trim() === replaceLink.url ? replaceLink.id : null;
+  const sentUrl = $("url-input").value.trim();
+  const link = replaceLink;
+  const started = probeResult;
+  const replace = link && sentUrl === link.url ? link.id : null;
   try {
     if (probeResult.type === "playlist") {
       const body = {
@@ -493,9 +508,9 @@ async function start() {
       };
       if (replace) body.replace = replace;
       const res = await api("/api/jobs", { method: "POST", body: JSON.stringify(body) });
-      hide($("select-card"));
-      setUrl("");
-      clearReplaceLink();
+      if (probeResult === started) hide($("select-card"));
+      if ($("url-input").value.trim() === sentUrl) setUrl("");
+      if (replaceLink === link) clearReplaceLink();
       await refreshJobs();
       toast("Download gestartet");
       if (res && res.skipped > 0) {
@@ -534,9 +549,9 @@ async function start() {
       }
       if (replace) payload.replace = replace;
       await api("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
-      hide($("select-card"));
-      setUrl("");
-      clearReplaceLink();
+      if (probeResult === started) hide($("select-card"));
+      if ($("url-input").value.trim() === sentUrl) setUrl("");
+      if (replaceLink === link) clearReplaceLink();
       await refreshJobs();
       toast("Download gestartet");
     }
@@ -733,14 +748,16 @@ $("jobs-list").addEventListener("click", async (e) => {
     const job = lastJobs.find((j) => j.id === id);
     if (!job) return;
     setUrl(job.url);
-    const profileSel = $("direct-profile");
-    if (job.profile && [...profileSel.options].some((o) => o.value === job.profile)) {
-      profileSel.value = job.profile;
-    }
     closeSelection();
     setReplaceLink({ id: job.id, url: job.url, label: job.title || job.url });
     // Bewusst kein focus(): auf iOS würde die Tastatur aufspringen.
     $("url-input").closest("section").scrollIntoView({ behavior: "smooth", block: "start" });
+    // Profil erst nach den Einstellungen setzen, sonst überschreibt loadSettings es.
+    await settingsLoaded;
+    const profileSel = $("direct-profile");
+    if (job.profile && [...profileSel.options].some((o) => o.value === job.profile)) {
+      profileSel.value = job.profile;
+    }
     return;
   }
   try {

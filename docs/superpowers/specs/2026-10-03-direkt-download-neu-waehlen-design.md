@@ -70,7 +70,9 @@ Abbruch-Context des Jobs).
   URL + Format) werden übersprungen; danach wird der Platzhalter-Job
   entfernt. Reihenfolge: erst Einträge anlegen, dann Platzhalter entfernen,
   damit ein Absturz dazwischen beim Neustart nur zu einer erneuten Analyse
-  mit übersprungenen Duplikaten führt.
+  mit übersprungenen Duplikaten führt. Nach dem Entfernen endet der
+  Durchlauf für den Platzhalter ohne weiteres Zustands-Update und ohne
+  Runner-Aufruf.
 - Playlist ohne Einträge: Job → `error`, Meldung „Playlist enthält keine
   Einträge“.
 - Analyse-Fehler: Job → `error` mit der Fehlermeldung, `NeedsProbe` bleibt
@@ -101,8 +103,9 @@ unverändert.
 - URL des Jobs ins Eingabefeld (über den zentralen Setz-Helfer, siehe D).
 - `#direct-profile` auf `job.profile`, falls gesetzt und gültig.
 - Offene Auswahlkarte schließen, Analyse-Ergebnis verwerfen.
-- Hinweis `#replace-hint` in der URL-Karte: „Ersetzt gescheiterten Eintrag:
-  <Titel oder URL>“ mit eigenem ✕ zum Lösen der Verknüpfung.
+- Hinweis `#replace-hint` in der URL-Karte: „Ersetzt Eintrag: <Titel oder
+  URL>“ (gilt für gescheiterte und abgebrochene Einträge) mit eigenem ✕ zum
+  Lösen der Verknüpfung.
 - Zur URL-Karte scrollen; kein Fokus ins Feld, damit auf iOS nicht die
   Tastatur aufgeht.
 

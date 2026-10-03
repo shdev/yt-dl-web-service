@@ -3,6 +3,7 @@
 const $ = (id) => document.getElementById(id);
 
 let probeResult = null;
+let probedUrl = ""; // URL, zu der probeResult gehört
 let replaceLink = null; // { id, url, label } oder null
 let currentSettings = {
   default_profile: "best",
@@ -254,8 +255,8 @@ $("default-profile").addEventListener("change", async () => {
 
 // --- URL-Feld ----------------------------------------------------------------
 
-// Einziger Weg, den Wert des URL-Felds programmatisch zu ändern: hält ✕ und
-// "Ersetzt"-Verknüpfung konsistent (ein input-Event feuert dabei nicht).
+// Einziger Weg, den Wert des URL-Felds programmatisch zu ändern: hält ✕,
+// "Ersetzt"-Verknüpfung und Auswahlkarte konsistent (ein input-Event feuert dabei nicht).
 function setUrl(value) {
   $("url-input").value = value;
   refreshUrlUi();
@@ -264,6 +265,8 @@ function setUrl(value) {
 function refreshUrlUi() {
   $("url-clear").hidden = $("url-input").value === "";
   if (replaceLink && $("url-input").value.trim() !== replaceLink.url) clearReplaceLink();
+  // Die Auswahlkarte gehört zur analysierten URL: andere URL, neu analysieren.
+  if (probeResult && $("url-input").value.trim() !== probedUrl) closeSelection();
 }
 
 // Aufrufer setzen erst setUrl(job.url), dann setReplaceLink(...).
@@ -280,6 +283,7 @@ function clearReplaceLink() {
 
 function closeSelection() {
   probeResult = null;
+  probedUrl = "";
   hide($("select-card"));
   hide($("start-error"));
 }
@@ -322,6 +326,7 @@ async function probe() {
     // Feld wurde während der Analyse geändert oder geleert: Ergebnis verwerfen.
     if ($("url-input").value.trim() !== url) return null;
     probeResult = result;
+    probedUrl = url;
     renderSelectCard();
     return result;
   } catch (err) {
@@ -495,6 +500,12 @@ async function start() {
   hide($("start-error"));
   // Ersetzt-Verknüpfung nur, solange das Feld noch die verknüpfte URL trägt.
   const sentUrl = $("url-input").value.trim();
+  // Der Feldwert kann sich ohne input-Event ändern (z. B. Autofill): nie Titel
+  // und Formate einer Analyse mit fremder URL senden.
+  if (!probeResult || sentUrl !== probedUrl) {
+    closeSelection();
+    return;
+  }
   const link = replaceLink;
   const started = probeResult;
   const replace = link && sentUrl === link.url ? link.id : null;

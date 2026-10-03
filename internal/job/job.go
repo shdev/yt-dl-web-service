@@ -39,6 +39,8 @@ type Job struct {
 	Filename       string     `json:"filename,omitempty"`
 	AudioFormatIDs []string   `json:"audio_format_ids,omitempty"`
 	MultiAudio     bool       `json:"multi_audio,omitempty"`
+	Profile        string     `json:"profile,omitempty"`
+	NeedsProbe     bool       `json:"needs_probe,omitempty"`
 }
 
 func New(url, title, format, formatLabel, playlistTitle string) Job {

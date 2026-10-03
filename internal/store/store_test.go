@@ -163,3 +163,46 @@ func TestConcurrentAccess(t *testing.T) {
 		t.Fatalf("8 Jobs erwartet, %d vorhanden", got)
 	}
 }
+
+func TestPersistsProfileAndNeedsProbe(t *testing.T) {
+	st, path := openStore(t)
+	j := job.New("https://example.com/a", "A", "ba", "l", "")
+	j.Profile = "720p"
+	j.NeedsProbe = true
+	if err := st.Add(j); err != nil {
+		t.Fatal(err)
+	}
+	st2, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := st2.Get(j.ID)
+	if !ok {
+		t.Fatal("Job nicht gefunden")
+	}
+	if got.Profile != "720p" || !got.NeedsProbe {
+		t.Fatalf("Felder nicht persistiert: %+v", got)
+	}
+}
+
+func TestOpenOldFileWithoutNewFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "jobs.json")
+	old := `[{"id":"a1","url":"https://example.com/a","title":"A","format":"ba","format_label":"l","state":"running","progress":{"percent":0,"speed":"","eta":""},"created_at":"2026-10-01T10:00:00Z"}]`
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := st.Get("a1")
+	if !ok {
+		t.Fatal("Job nicht gefunden")
+	}
+	if got.Profile != "" || got.NeedsProbe {
+		t.Fatalf("neue Felder müssen leer sein: %+v", got)
+	}
+	if got.State != job.StateQueued {
+		t.Fatalf("State = %s, erwartet queued", got.State)
+	}
+}

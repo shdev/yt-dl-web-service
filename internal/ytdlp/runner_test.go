@@ -329,13 +329,13 @@ func TestExecRunnerWithoutInfoJSONStillSucceeds(t *testing.T) {
 
 func TestExecRunnerFailedDownloadDoesNotRenameInfoJSON(t *testing.T) {
 	dir := t.TempDir()
+	media := filepath.Join(dir, "Titel [abc].mp4")
 	info := filepath.Join(dir, "Titel [abc].info.json")
-	if err := os.WriteFile(info, []byte("{}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PRINT_LINE", filepath.Join(dir, "Titel [abc].mp4"))
+	t.Setenv("PRINT_LINE", media)
+	// Das Fake meldet den Medienpfad, scheitert aber danach: ohne Fehlerprüfung
+	// vor der Umbenennung würde die .meta.json entstehen.
 	r := &ytdlp.ExecRunner{
-		Bin: "testdata/dl-fail.sh", DownloadDir: dir,
+		Bin: "testdata/infojson-fail.sh", DownloadDir: dir,
 		OutputTemplate: "%(title)s.%(ext)s",
 	}
 	if err := r.Run(context.Background(), testJob(), func(job.Progress) {}); err == nil {
@@ -344,7 +344,38 @@ func TestExecRunnerFailedDownloadDoesNotRenameInfoJSON(t *testing.T) {
 	if _, err := os.Stat(info); err != nil {
 		t.Fatalf(".info.json muss unangetastet bleiben: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "Titel [abc].mp4.meta.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(media + ".meta.json"); !os.IsNotExist(err) {
+		t.Fatalf("keine .meta.json erwartet: %v", err)
+	}
+}
+
+func TestExecRunnerCanceledDownloadDoesNotRenameInfoJSON(t *testing.T) {
+	dir := t.TempDir()
+	media := filepath.Join(dir, "Titel [abc].mp4")
+	info := filepath.Join(dir, "Titel [abc].info.json")
+	t.Setenv("PRINT_LINE", media)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Abbruch, sobald der Medienpfad gemeldet wurde (Fake hängt danach).
+	r := &ytdlp.ExecRunner{
+		Bin: "testdata/infojson-hang.sh", DownloadDir: dir,
+		OutputTemplate: "%(title)s.%(ext)s",
+		OnFilename:     func(string) { cancel() },
+	}
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx, testJob(), func(job.Progress) {}) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("context.Canceled erwartet, war: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Runner hat auf Cancel nicht reagiert")
+	}
+	if _, err := os.Stat(info); err != nil {
+		t.Fatalf(".info.json muss unangetastet bleiben: %v", err)
+	}
+	if _, err := os.Stat(media + ".meta.json"); !os.IsNotExist(err) {
 		t.Fatalf("keine .meta.json erwartet: %v", err)
 	}
 }

@@ -3,6 +3,7 @@
 const $ = (id) => document.getElementById(id);
 
 let probeResult = null;
+let replaceLink = null; // { id, url, label } oder null
 let currentSettings = {
   default_profile: "best",
   // Server-gerendertes Theme als Startwert: scheitert der Settings-Fetch,
@@ -135,6 +136,7 @@ async function loadSettings() {
     if (s && s.default_profile) currentSettings = { theme: "auto", ...s };
   } catch { /* Defaults behalten */ }
   $("default-profile").value = currentSettings.default_profile;
+  $("direct-profile").value = currentSettings.default_profile;
   // Kein applyTheme hier: der Server hat data-theme und Metas schon korrekt
   // gerendert — nur der Umschalter muss den Zustand anzeigen.
   themeRadio(currentSettings.theme).checked = true;
@@ -239,13 +241,56 @@ $("ytdlp-update-btn").addEventListener("click", async () => {
 
 $("default-profile").addEventListener("change", async () => {
   const save = saveSettings({ default_profile: $("default-profile").value });
+  $("direct-profile").value = $("default-profile").value;
   try {
     await save.done;
   } catch (err) {
     if (!save.isLatest()) return;
     toast(err.message, "error");
     $("default-profile").value = currentSettings.default_profile;
+    $("direct-profile").value = currentSettings.default_profile;
   }
+});
+
+// --- URL-Feld ----------------------------------------------------------------
+
+// Einziger Weg, den Wert des URL-Felds programmatisch zu ändern: hält ✕ und
+// "Ersetzt"-Verknüpfung konsistent (ein input-Event feuert dabei nicht).
+function setUrl(value) {
+  $("url-input").value = value;
+  refreshUrlUi();
+}
+
+function refreshUrlUi() {
+  $("url-clear").hidden = $("url-input").value === "";
+  if (replaceLink && $("url-input").value.trim() !== replaceLink.url) clearReplaceLink();
+}
+
+// Aufrufer setzen erst setUrl(job.url), dann setReplaceLink(...).
+function setReplaceLink(link) {
+  replaceLink = link;
+  $("replace-hint-text").textContent = `Ersetzt Eintrag: ${link.label}`;
+  show($("replace-hint"));
+}
+
+function clearReplaceLink() {
+  replaceLink = null;
+  hide($("replace-hint"));
+}
+
+function closeSelection() {
+  probeResult = null;
+  hide($("select-card"));
+  hide($("start-error"));
+}
+
+$("url-input").addEventListener("input", refreshUrlUi);
+$("replace-hint-clear").addEventListener("click", clearReplaceLink);
+$("url-clear").addEventListener("click", () => {
+  setUrl("");
+  closeSelection();
+  clearReplaceLink();
+  $("url-input").focus();
 });
 
 // --- Analyse ---------------------------------------------------------------
@@ -262,9 +307,12 @@ async function probe() {
   hide($("select-card"));
   if (!url) return null;
   $("probe-btn").disabled = true;
+  $("direct-btn").disabled = true;
   $("probe-btn").textContent = "Analysiere…";
   try {
     const result = await api("/api/probe", { method: "POST", body: JSON.stringify({ url }) });
+    // Feld wurde während der Analyse geändert oder geleert: Ergebnis verwerfen.
+    if ($("url-input").value.trim() !== url) return null;
     probeResult = result;
     renderSelectCard();
     return result;
@@ -274,7 +322,35 @@ async function probe() {
     return null;
   } finally {
     $("probe-btn").disabled = false;
+    $("direct-btn").disabled = false;
     $("probe-btn").textContent = "Analysieren";
+  }
+}
+
+$("direct-btn").addEventListener("click", startDirect);
+
+// Direkt-Download ohne Analyse: Profil aus #direct-profile.
+async function startDirect() {
+  const url = $("url-input").value.trim();
+  if (!url) return;
+  hide($("probe-error"));
+  $("probe-btn").disabled = true;
+  $("direct-btn").disabled = true;
+  try {
+    const body = { type: "direct", url, profile: $("direct-profile").value };
+    if (replaceLink && replaceLink.url === url) body.replace = replaceLink.id;
+    await api("/api/jobs", { method: "POST", body: JSON.stringify(body) });
+    setUrl("");
+    closeSelection();
+    clearReplaceLink();
+    await refreshJobs();
+    toast("Download hinzugefügt");
+  } catch (err) {
+    $("probe-error").textContent = err.message;
+    show($("probe-error"));
+  } finally {
+    $("probe-btn").disabled = false;
+    $("direct-btn").disabled = false;
   }
 }
 
@@ -405,19 +481,21 @@ $("start-btn").addEventListener("click", start);
 
 async function start() {
   hide($("start-error"));
+  // Ersetzt-Verknüpfung nur, solange das Feld noch die verknüpfte URL trägt.
+  const replace = replaceLink && $("url-input").value.trim() === replaceLink.url ? replaceLink.id : null;
   try {
     if (probeResult.type === "playlist") {
-      const res = await api("/api/jobs", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "playlist",
-          profile: $("profile-select").value,
-          playlist_title: probeResult.playlist.title,
-          entries: probeResult.playlist.entries,
-        }),
-      });
+      const body = {
+        type: "playlist",
+        profile: $("profile-select").value,
+        playlist_title: probeResult.playlist.title,
+        entries: probeResult.playlist.entries,
+      };
+      if (replace) body.replace = replace;
+      const res = await api("/api/jobs", { method: "POST", body: JSON.stringify(body) });
       hide($("select-card"));
-      $("url-input").value = "";
+      setUrl("");
+      clearReplaceLink();
       await refreshJobs();
       toast("Download gestartet");
       if (res && res.skipped > 0) {
@@ -454,9 +532,11 @@ async function start() {
           format_label: formatLabel(mode),
         };
       }
+      if (replace) payload.replace = replace;
       await api("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
       hide($("select-card"));
-      $("url-input").value = "";
+      setUrl("");
+      clearReplaceLink();
       await refreshJobs();
       toast("Download gestartet");
     }
@@ -602,7 +682,7 @@ async function handleSharedUrl() {
     history.replaceState(null, "", location.pathname);
   }
   if (!shared) return;
-  $("url-input").value = shared;
+  setUrl(shared);
   await settingsLoaded; // Standard-Profil muss für die Vorauswahl geladen sein
   const result = await probe();
   // Autostart nur, wenn GENAU diese Analyse gelungen ist (result), keine

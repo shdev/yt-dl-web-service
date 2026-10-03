@@ -1334,3 +1334,24 @@ func TestReplaceWorksForVideoAndPlaylist(t *testing.T) {
 		t.Fatal("leere Playlist: alter Job wurde entfernt")
 	}
 }
+
+// TestIndexRendersDirectDownloadUI: URL-Karte mit Direkt-Download, Leeren-Button
+// und Ersetzt-Hinweis; das Profil-Select wird aus ytdlp.Profiles gerendert.
+func TestIndexRendersDirectDownloadUI(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "GET", "/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Index: %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, id := range []string{`id="direct-profile"`, `id="direct-btn"`, `id="url-clear"`, `id="replace-hint"`} {
+		if !strings.Contains(body, id) {
+			t.Fatalf("%s fehlt im gerenderten Index", id)
+		}
+	}
+	_, rest, _ := strings.Cut(body, `id="direct-profile"`)
+	sel, _, ok := strings.Cut(rest, "</select>")
+	if !ok || !strings.Contains(sel, `value="1080p-mp4"`) {
+		t.Fatalf("direct-profile enthält die Profile nicht: %s", sel)
+	}
+}

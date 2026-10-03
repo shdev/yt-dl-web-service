@@ -205,6 +205,39 @@
   .btn-sm {
     @apply rounded-[7px] px-2.5 py-1 text-xs;
   }
+  .url-field {
+    @apply relative;
+  }
+  .url-field .input {
+    @apply pr-10;
+  }
+  .url-clear {
+    @apply absolute right-1 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-dim;
+  }
+  .url-clear:hover {
+    @apply text-text;
+  }
+  .icon-btn {
+    @apply inline-flex size-8 shrink-0 items-center justify-center rounded-md text-dim;
+  }
+  .icon-btn:hover {
+    @apply text-text;
+  }
+  /* Touch-Ziele mindestens 44x44 px */
+  @media (pointer: coarse) {
+    .url-clear {
+      width: 44px;
+      height: 44px;
+      right: 0;
+    }
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+    }
+  }
+  .replace-hint {
+    @apply mt-3 flex items-center gap-2 rounded-lg border border-edge-strong bg-bg px-3 py-1.5 text-xs text-muted;
+  }
   .pill {
     @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11.5px] font-medium whitespace-nowrap;
   }

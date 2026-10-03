@@ -101,6 +101,16 @@ convention media servers like Jellyfin, Plex and Kodi look for automatically.
 If the source has no thumbnail available, yt-dlp just prints a warning and
 the download proceeds normally — no poster file, no failed job.
 
+## Metadata sidecar
+
+Every finished download gets the full yt-dlp metadata written next to it as
+JSON — the complete media file name including its extension, plus
+`.meta.json` (e.g. `Me at the zoo [jNQXAC9IVRw].mp4` gets a sibling
+`Me at the zoo [jNQXAC9IVRw].mp4.meta.json`). The content is yt-dlp's
+unmodified `info.json`. If a download is aborted or fails, a stray
+`.info.json` may be left behind; the next retry overwrites it. A failure to
+write the sidecar is only logged — it never fails the job.
+
 ## Multi-language audio
 
 For videos with several audio tracks (real dubs, e.g. ARTE's German /

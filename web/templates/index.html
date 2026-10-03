@@ -82,11 +82,13 @@
         </button>
       </div>
       <div class="mt-2 flex flex-wrap items-center gap-2">
-        <button class="btn btn-primary" id="probe-btn">Analysieren</button>
-        <select class="select w-auto" id="direct-profile" aria-label="Profil für Direkt-Download">
-          {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
-          {{end}}</select>
-        <button type="button" class="btn btn-ghost" id="direct-btn">Download</button>
+        <button class="btn btn-primary w-full sm:w-auto" id="probe-btn">Analysieren</button>
+        <div class="flex w-full min-w-0 items-stretch gap-2 sm:w-auto">
+          <select class="select min-w-0 flex-1 truncate sm:w-auto sm:flex-none" id="direct-profile" aria-label="Profil für Direkt-Download">
+            {{range .Profiles}}<option value="{{.Key}}">{{.Label}}</option>
+            {{end}}</select>
+          <button type="button" class="btn btn-ghost" id="direct-btn">Download</button>
+        </div>
       </div>
       <div class="replace-hint" id="replace-hint" aria-live="polite" hidden>
         <span class="min-w-0 truncate" id="replace-hint-text"></span>

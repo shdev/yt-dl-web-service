@@ -574,61 +574,140 @@ async function refreshJobs() {
   }
 }
 
+// Zwischenablage: Clipboard-API nur im Secure Context, sonst (z.B.
+// http://<LAN-IP>) synchroner execCommand-Fallback — ohne await davor,
+// damit die Nutzergeste erhalten bleibt.
+function legacyCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.readOnly = true;
+  ta.value = text;
+  // 16 px gegen den iOS-Zoom beim Fokussieren.
+  ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px";
+  document.body.append(ta);
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+
+async function copyText(text) {
+  if (window.isSecureContext && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // weiter zum Fallback
+    }
+  }
+  return legacyCopy(text);
+}
+
+// Karten-weises Rendern: Karten gehören positionsweise zu den Job-IDs in
+// renderedIds; nur geänderte Karten werden ersetzt, damit ein Klick beim
+// Polling nicht verloren geht.
+let lastJobs = [];
+let renderedIds = [];
+let renderedHtml = new Map();
+
 function renderJobs(jobs) {
+  lastJobs = jobs;
   $("jobs-empty").hidden = jobs.length > 0;
-  $("jobs-list").innerHTML = jobs.map((j) => {
-    const [pill, label] = STATE_PILLS[j.state] || ["pill pill-wait", esc(j.state)];
-    const pct = Math.round(j.progress?.percent || 0);
-    let title = esc(j.title || j.url);
-    if (j.playlist_title) {
-      title += ` <span class="font-normal text-muted">(${esc(j.playlist_title)})</span>`;
-    }
-    const metaParts = [
-      j.format_label,
-      j.progress?.speed,
-      j.progress?.eta ? `ETA ${j.progress.eta}` : "",
-      j.state === "running" ? `${pct} %` : "",
-    ].filter(Boolean).map(esc);
-    metaParts.push(timeFragment("hinzugefügt", j.created_at));
-    if (j.finished_at) {
-      metaParts.push(timeFragment(j.state === "done" ? "fertig" : "beendet", j.finished_at));
-    }
-    const meta = metaParts.filter(Boolean).join(" · ");
-    let extra = j.error
-      ? `<div class="col-span-full text-xs text-danger">${esc(j.error)}</div>` : "";
-    if (j.state === "done" && j.filename) {
-      extra += `<div class="col-span-full truncate text-xs text-muted cursor-pointer font-mono"
-        data-action="copy" data-filename="${esc(j.filename)}" title="${esc(j.filename)}">${esc(j.filename)}</div>`;
-    }
-    // Bekanntes Muster (z.B. yt-dlp#17456): 403 heißt fast immer, dass
-    // yt-dlp veraltet ist — direkt zur Abhilfe verlinken.
-    if (j.error && /HTTP Error 403|403: Forbidden/i.test(j.error)) {
-      extra += `<div class="col-span-full text-xs text-muted">Tipp: yt-dlp über
-        Einstellungen → „Jetzt aktualisieren“ auf den neuesten Stand bringen und den Job erneut starten.</div>`;
-    }
-    if (j.state === "running") {
-      extra += `<div class="col-span-full bar" role="progressbar" aria-valuenow="${pct}"
-        aria-valuemin="0" aria-valuemax="100"><span class="bar-fill" style="width:${pct}%"></span></div>`;
-    }
-    return `<div class="job-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-1.5 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-      <div class="truncate text-sm font-medium">${title}</div>
-      <span class="${pill} justify-self-end"><i class="pill-dot"></i>${label}</span>
-      <div class="col-span-2 flex gap-1.5 justify-self-start sm:col-span-1 sm:justify-self-end">${actionButtons(j)}</div>
-      ${meta ? `<div class="col-span-full text-xs text-muted tabular-nums">${meta}</div>` : ""}
-      ${extra}
-    </div>`;
-  }).join("");
+  const list = $("jobs-list");
+  const ids = jobs.map((j) => j.id);
+  const htmls = jobs.map(cardHtml);
+  const sameOrder = ids.length === renderedIds.length && ids.every((id, i) => id === renderedIds[i]);
+  if (sameOrder) {
+    htmls.forEach((html, i) => {
+      if (html === renderedHtml.get(ids[i])) return;
+      const t = document.createElement("template");
+      t.innerHTML = html.trim();
+      list.replaceChild(t.content.firstElementChild, list.children[i]);
+    });
+  } else {
+    list.innerHTML = htmls.join("");
+  }
+  renderedIds = ids;
+  renderedHtml = new Map(ids.map((id, i) => [id, htmls[i]]));
+}
+
+const COPY_ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+  stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>
+  <path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H3.5A1.5 1.5 0 0 0 2 3v5.5A1.5 1.5 0 0 0 3.5 10H4"/></svg>`;
+
+// URL-Zeile: nur http(s) wird zum Link, alles andere bleibt reiner Text.
+function urlRow(j) {
+  const u = esc(j.url);
+  const el = /^https?:\/\//i.test(j.url || "")
+    ? `<a class="min-w-0 flex-1 truncate text-xs text-muted hover:text-text" href="${u}" target="_blank" rel="noopener noreferrer" title="${u}">${u}</a>`
+    : `<span class="min-w-0 flex-1 truncate text-xs text-muted" title="${u}">${u}</span>`;
+  return `<div class="col-span-full flex min-w-0 items-center gap-1.5">${el}
+    <button type="button" class="icon-btn" data-action="copy-url" data-url="${u}" aria-label="URL kopieren">${COPY_ICON}</button></div>`;
+}
+
+function cardHtml(j) {
+  const probing = j.state === "running" && !!j.needs_probe;
+  const [pill, label] = probing
+    ? ["pill pill-run", "Wird analysiert"]
+    : STATE_PILLS[j.state] || ["pill pill-wait", esc(j.state)];
+  const pct = Math.round(j.progress?.percent || 0);
+  let title = j.title ? esc(j.title) : '<span class="font-normal text-dim">Ohne Titel</span>';
+  if (j.playlist_title) {
+    title += ` <span class="font-normal text-muted">(${esc(j.playlist_title)})</span>`;
+  }
+  const metaParts = [
+    j.format_label,
+    probing ? "" : j.progress?.speed,
+    probing ? "" : (j.progress?.eta ? `ETA ${j.progress.eta}` : ""),
+    j.state === "running" && !probing ? `${pct} %` : "",
+  ].filter(Boolean).map(esc);
+  metaParts.push(timeFragment("hinzugefügt", j.created_at));
+  if (j.finished_at) {
+    metaParts.push(timeFragment(j.state === "done" ? "fertig" : "beendet", j.finished_at));
+  }
+  const meta = metaParts.filter(Boolean).join(" · ");
+  let extra = j.error
+    ? `<div class="col-span-full text-xs text-danger">${esc(j.error)}</div>` : "";
+  if (j.state === "done" && j.filename) {
+    extra += `<div class="col-span-full truncate text-xs text-muted cursor-pointer font-mono"
+      data-action="copy" data-filename="${esc(j.filename)}" title="${esc(j.filename)}">${esc(j.filename)}</div>`;
+  }
+  // Bekanntes Muster (z.B. yt-dlp#17456): 403 heißt fast immer, dass
+  // yt-dlp veraltet ist — direkt zur Abhilfe verlinken.
+  if (j.error && /HTTP Error 403|403: Forbidden/i.test(j.error)) {
+    extra += `<div class="col-span-full text-xs text-muted">Tipp: yt-dlp über
+      Einstellungen → „Jetzt aktualisieren“ auf den neuesten Stand bringen und den Job erneut starten.</div>`;
+  }
+  if (j.state === "running" && !probing) {
+    extra += `<div class="col-span-full bar" role="progressbar" aria-valuenow="${pct}"
+      aria-valuemin="0" aria-valuemax="100"><span class="bar-fill" style="width:${pct}%"></span></div>`;
+  }
+  return `<div class="job-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-1.5 sm:grid-cols-[minmax(0,1fr)_auto_auto]" data-job-id="${esc(j.id)}">
+    <div class="truncate text-sm font-medium">${title}</div>
+    <span class="${pill} justify-self-end"><i class="pill-dot"></i>${label}</span>
+    <div class="col-span-2 flex gap-1.5 justify-self-start sm:col-span-1 sm:justify-self-end">${actionButtons(j)}</div>
+    ${meta ? `<div class="col-span-full text-xs text-muted tabular-nums">${meta}</div>` : ""}
+    ${urlRow(j)}
+    ${extra}
+  </div>`;
 }
 
 function actionButtons(j) {
   const btn = (action, label) =>
-    `<button class="btn btn-ghost btn-sm" data-action="${action}" data-id="${j.id}">${label}</button>`;
+    `<button class="btn btn-ghost btn-sm" data-action="${action}" data-id="${esc(j.id)}">${label}</button>`;
   if (j.state === "queued" || j.state === "running") {
     return btn("cancel", "Abbrechen");
   }
   const parts = [];
   if (j.state === "error" || j.state === "canceled") {
     parts.push(btn("retry", "Erneut"));
+    parts.push(btn("reselect", "Neu wählen"));
   }
   parts.push(btn("delete", "Entfernen"));
   return parts.join(" ");
@@ -637,17 +716,33 @@ function actionButtons(j) {
 $("jobs-list").addEventListener("click", async (e) => {
   const copyEl = e.target.closest('[data-action="copy"]');
   if (copyEl) {
-    try {
-      await navigator.clipboard.writeText(copyEl.dataset.filename);
-      toast("Dateiname kopiert");
-    } catch {
-      toast("Kopieren nicht möglich", "error");
-    }
+    const ok = await copyText(copyEl.dataset.filename);
+    toast(ok ? "Dateiname kopiert" : "Kopieren nicht möglich", ok ? "ok" : "error");
+    return;
+  }
+  const urlEl = e.target.closest('[data-action="copy-url"]');
+  if (urlEl) {
+    const ok = await copyText(urlEl.dataset.url);
+    toast(ok ? "URL kopiert" : "Kopieren nicht möglich", ok ? "ok" : "error");
     return;
   }
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   const { action, id } = btn.dataset;
+  if (action === "reselect") {
+    const job = lastJobs.find((j) => j.id === id);
+    if (!job) return;
+    setUrl(job.url);
+    const profileSel = $("direct-profile");
+    if (job.profile && [...profileSel.options].some((o) => o.value === job.profile)) {
+      profileSel.value = job.profile;
+    }
+    closeSelection();
+    setReplaceLink({ id: job.id, url: job.url, label: job.title || job.url });
+    // Bewusst kein focus(): auf iOS würde die Tastatur aufspringen.
+    $("url-input").closest("section").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   try {
     if (action === "delete") {
       await api(`/api/jobs/${id}`, { method: "DELETE" });

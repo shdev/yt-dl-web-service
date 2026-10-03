@@ -1033,3 +1033,52 @@ func TestCreateVideoJobSingleAudioFormatIDNoMultiAudio(t *testing.T) {
 		t.Fatalf("MultiAudio darf bei nur 1 ID nicht gesetzt sein: %+v", jobs[0])
 	}
 }
+
+func TestCreateVideoJobWithProfileStoresProfile(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/a", "profile": "720p",
+	})
+	if rec.Code != 201 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if got := st.List()[0].Profile; got != "720p" {
+		t.Fatalf("Profile = %q", got)
+	}
+}
+
+func TestCreateVideoJobManualHasNoProfile(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/a", "audio_only": true,
+	})
+	if rec.Code != 201 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if got := st.List()[0].Profile; got != "" {
+		t.Fatalf("Profile = %q, erwartet leer", got)
+	}
+}
+
+func TestCreatePlaylistJobsStoresProfile(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "playlist", "profile": "best", "playlist_title": "Liste",
+		"entries": []map[string]string{
+			{"url": "https://example.com/1", "title": "Eins"},
+			{"url": "https://example.com/2", "title": "Zwei"},
+		},
+	})
+	if rec.Code != 201 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 2 {
+		t.Fatalf("Jobs = %d", len(jobs))
+	}
+	for _, j := range jobs {
+		if j.Profile != "best" {
+			t.Fatalf("Profile = %q", j.Profile)
+		}
+	}
+}

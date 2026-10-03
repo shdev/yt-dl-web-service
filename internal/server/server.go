@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"ytdlweb/internal/intake"
 	"ytdlweb/internal/job"
 	"ytdlweb/internal/queue"
 	"ytdlweb/internal/settings"
@@ -212,7 +213,7 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 		writeError(w, http.StatusBadRequest, "url fehlt")
 		return
 	}
-	var format, label string
+	var format, label, profileKey string
 	// ids sind die tatsächlich verwendeten Audiospuren — in Audio-only-
 	// Kontexten (Profil "audio" bzw. audio_only=true) auf die erste Spur
 	// reduziert, weil dort kein Videoteil existiert, mit dem sich mehrere
@@ -228,6 +229,7 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 			writeError(w, http.StatusBadRequest, "unbekanntes Profil")
 			return
 		}
+		profileKey = profile.Key
 		format = profile.Expr
 		if len(ids) > 0 {
 			if profile.VideoExpr == "" {
@@ -261,12 +263,13 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 			label = format
 		}
 	}
-	if s.isDuplicate(url, format) {
+	if intake.IsDuplicate(s.store, url, format) {
 		writeError(w, http.StatusConflict, "Dieser Download läuft bereits")
 		return
 	}
 	j := job.New(url, req.Title, format, label, "")
 	j.AudioFormatIDs = ids
+	j.Profile = profileKey
 	j.MultiAudio = len(ids) > 1
 	if err := s.store.Add(j); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -286,59 +289,18 @@ func (s *Server) createPlaylistJobs(w http.ResponseWriter, req createJobsRequest
 		writeError(w, http.StatusBadRequest, "keine Einträge")
 		return
 	}
-	format, multiAudio := playlistFormat(profile)
-	ids := []string{}
-	skipped := 0
-	for _, e := range req.Entries {
-		url := strings.TrimSpace(e.URL)
-		if url == "" || s.isDuplicate(url, format) {
-			skipped++
-			continue
-		}
-		j := job.New(url, e.Title, format, profile.Label, req.PlaylistTitle)
-		j.MultiAudio = multiAudio
-		if err := s.store.Add(j); err != nil {
-			s.queue.Kick() // bereits angelegte Jobs nicht stranden lassen
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		ids = append(ids, j.ID)
+	entries := make([]intake.Entry, len(req.Entries))
+	for i, e := range req.Entries {
+		entries[i] = intake.Entry(e)
+	}
+	ids, skipped, err := intake.CreatePlaylistJobs(s.store, profile, req.PlaylistTitle, entries)
+	if err != nil {
+		s.queue.Kick() // bereits angelegte Jobs nicht stranden lassen
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 	s.queue.Kick()
 	writeJSON(w, http.StatusCreated, map[string]any{"ids": ids, "skipped": skipped})
-}
-
-// playlistFormat baut den Format-Ausdruck für Playlist-Jobs: eine
-// Sprach-Fallback-Kette, die die deutsche Synchro plus fremdsprachige
-// Originalspur bevorzugt, ersatzweise irgendeine deutschsprachige Spur,
-// sonst der bisherige Profil-Ausdruck ("Beste Qualität · de + en
-// (Original)"-Regel aus Backlog-Idee 3, angewandt auf Playlists). Das
-// zweite Kettenglied (Original-Zweitspur) filtert zusätzlich
-// [language!^=de] — sonst würde bei Quellen ohne language_preference eine
-// zweite deutsche Spur (z. B. eine zweite de-Synchro) fälschlich als
-// "Original" mitgewählt und die de-Spur landet doppelt im Ausgabefile
-// (gegen echtes YouTube/ARTE verifiziert, Final-Review-Fund 1). MultiAudio
-// ist true, weil die Kette bis zu zwei Audiospuren kombinieren kann
-// (Runner setzt dann --audio-multistreams). Beim Profil "audio" (kein
-// VideoExpr) bleibt alles wie bisher — dort existiert kein Videoteil, mit
-// dem sich mehrere Spuren kombinieren ließen (Ausnahme aus dem Brief).
-func playlistFormat(profile ytdlp.Profile) (format string, multiAudio bool) {
-	if profile.VideoExpr == "" {
-		return profile.Expr, false
-	}
-	format = profile.VideoExpr + "+ba[language^=de]+ba[format_note*=original][language!^=de]/" +
-		profile.VideoExpr + "+ba[language^=de]/" + profile.Expr
-	return format, true
-}
-
-func (s *Server) isDuplicate(url, format string) bool {
-	for _, j := range s.store.List() {
-		if j.URL == url && j.Format == format &&
-			(j.State == job.StateQueued || j.State == job.StateRunning) {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {

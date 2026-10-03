@@ -221,10 +221,10 @@ func (s *Server) replaceable(id string) (job.Job, bool) {
 // removeReplaced entfernt den ersetzten Job; der Zustand wird erneut
 // geprüft, weil er zwischenzeitlich per Retry wieder queued sein kann.
 func (s *Server) removeReplaced(id string) {
-	if _, ok := s.replaceable(id); !ok {
-		return
-	}
-	if err := s.store.Remove(id); err != nil {
+	_, err := s.store.RemoveIf(id, func(j job.Job) bool {
+		return j.State == job.StateError || j.State == job.StateCanceled
+	})
+	if err != nil {
 		log.Printf("server: ersetzter Job %s nicht entfernt: %v", id, err)
 	}
 }
@@ -429,8 +429,18 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "laufenden Job zuerst abbrechen")
 		return
 	}
-	if err := s.store.Remove(id); err != nil {
+	removed, err := s.store.RemoveIf(id, func(x job.Job) bool { return x.State != job.StateRunning })
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !removed {
+		// Zwischen Get und Entfernen geändert: läuft jetzt oder ist weg.
+		if cur, still := s.store.Get(id); still && cur.State == job.StateRunning {
+			writeError(w, http.StatusConflict, "laufenden Job zuerst abbrechen")
+		} else {
+			writeError(w, http.StatusNotFound, "Job nicht gefunden")
+		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

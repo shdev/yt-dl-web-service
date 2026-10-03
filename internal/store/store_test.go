@@ -121,6 +121,51 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestRemoveIfRemovesWhenConditionHolds(t *testing.T) {
+	st, path := openStore(t)
+	j := job.New("https://example.com/a", "A", "ba", "l", "")
+	_ = st.Add(j)
+	removed, err := st.RemoveIf(j.ID, func(x job.Job) bool { return x.ID == j.ID })
+	if err != nil || !removed {
+		t.Fatalf("RemoveIf = %v, %v; erwartet true, nil", removed, err)
+	}
+	if _, ok := st.Get(j.ID); ok {
+		t.Fatal("Job muss entfernt sein")
+	}
+	st2, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st2.Get(j.ID); ok {
+		t.Fatal("Job muss auch nach erneutem Open entfernt sein")
+	}
+}
+
+func TestRemoveIfKeepsJobWhenConditionFails(t *testing.T) {
+	st, _ := openStore(t)
+	j := job.New("https://example.com/a", "A", "ba", "l", "")
+	_ = st.Add(j)
+	removed, err := st.RemoveIf(j.ID, func(job.Job) bool { return false })
+	if err != nil || removed {
+		t.Fatalf("RemoveIf = %v, %v; erwartet false, nil", removed, err)
+	}
+	if _, ok := st.Get(j.ID); !ok {
+		t.Fatal("Job muss erhalten bleiben")
+	}
+}
+
+func TestRemoveIfUnknownID(t *testing.T) {
+	st, _ := openStore(t)
+	called := false
+	removed, err := st.RemoveIf("unbekannt", func(job.Job) bool { called = true; return true })
+	if err != nil || removed {
+		t.Fatalf("RemoveIf = %v, %v; erwartet false, nil", removed, err)
+	}
+	if called {
+		t.Fatal("Bedingung darf für unbekannte ID nicht aufgerufen werden")
+	}
+}
+
 func TestUpdateUnknownID(t *testing.T) {
 	st, _ := openStore(t)
 	if err := st.Update("unbekannt", func(*job.Job) {}); err == nil {

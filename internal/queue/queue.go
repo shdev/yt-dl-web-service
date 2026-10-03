@@ -244,6 +244,10 @@ func (q *Queue) analyze(ctx context.Context, j *job.Job) error {
 		if !ok {
 			return errors.New("unbekanntes Profil")
 		}
+		// Abbruch (Nutzer oder Shutdown) nach erfolgreicher Analyse: keine Einträge anlegen.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		entries := make([]intake.Entry, 0, len(res.Playlist.Entries))
 		for _, e := range res.Playlist.Entries {
 			entries = append(entries, intake.Entry{URL: e.URL, Title: e.Title})

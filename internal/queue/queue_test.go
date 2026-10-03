@@ -277,6 +277,9 @@ type fakeProber struct {
 	calls  int
 	block  chan struct{} // gesetzt: Probe wartet auf close oder ctx.Done
 	called chan struct{} // gesetzt: jeder Aufruf meldet sich (gepuffert)
+	// ignoreCtx: Probe wartet nur auf block und liefert das Ergebnis auch bei
+	// abgebrochenem Context (Abbruch trifft genau nach erfolgreicher Analyse).
+	ignoreCtx bool
 }
 
 func (f *fakeProber) Probe(ctx context.Context, url string) (*ytdlp.ProbeResult, error) {
@@ -288,10 +291,14 @@ func (f *fakeProber) Probe(ctx context.Context, url string) (*ytdlp.ProbeResult,
 		f.called <- struct{}{}
 	}
 	if f.block != nil {
-		select {
-		case <-f.block:
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		if f.ignoreCtx {
+			<-f.block
+		} else {
+			select {
+			case <-f.block:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 	}
 	return res, err
@@ -531,6 +538,32 @@ func TestQueueCancelDuringProbe(t *testing.T) {
 	got, _ := st.Get(j.ID)
 	if got.FinishedAt == nil || !got.NeedsProbe {
 		t.Fatalf("FinishedAt/NeedsProbe falsch: %+v", got)
+	}
+	if rr.ran(j.ID) {
+		t.Fatal("Runner darf nicht laufen")
+	}
+}
+
+func TestQueueCancelAfterPlaylistProbeCreatesNoEntries(t *testing.T) {
+	fp := &fakeProber{res: probePlaylist(), block: make(chan struct{}), called: make(chan struct{}, 4), ignoreCtx: true}
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, fp)
+	j := addProbeJob(t, st, "https://example.com/pl", "best")
+	q.Kick()
+	select {
+	case <-fp.called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Probe wurde nicht aufgerufen")
+	}
+	q.Cancel(j.ID)
+	close(fp.block) // Probe liefert jetzt trotz abgebrochenem Context die Playlist
+	waitState(t, st, j.ID, job.StateCanceled)
+	got, _ := st.Get(j.ID)
+	if !got.NeedsProbe {
+		t.Fatalf("NeedsProbe muss true bleiben: %+v", got)
+	}
+	if n := len(st.List()); n != 1 {
+		t.Fatalf("%d Jobs, erwartet nur den Platzhalter", n)
 	}
 	if rr.ran(j.ID) {
 		t.Fatal("Runner darf nicht laufen")

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"ytdlweb/internal/intake"
 	"ytdlweb/internal/job"
 	"ytdlweb/internal/queue"
 	"ytdlweb/internal/server"
@@ -1031,5 +1032,326 @@ func TestCreateVideoJobSingleAudioFormatIDNoMultiAudio(t *testing.T) {
 	}
 	if jobs[0].MultiAudio {
 		t.Fatalf("MultiAudio darf bei nur 1 ID nicht gesetzt sein: %+v", jobs[0])
+	}
+}
+
+func TestCreateVideoJobWithProfileStoresProfile(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/a", "profile": "720p",
+	})
+	if rec.Code != 201 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if got := st.List()[0].Profile; got != "720p" {
+		t.Fatalf("Profile = %q", got)
+	}
+}
+
+func TestCreateVideoJobManualHasNoProfile(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/a", "audio_only": true,
+	})
+	if rec.Code != 201 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if got := st.List()[0].Profile; got != "" {
+		t.Fatalf("Profile = %q, erwartet leer", got)
+	}
+}
+
+func TestCreatePlaylistJobsStoresProfile(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "playlist", "profile": "best", "playlist_title": "Liste",
+		"entries": []map[string]string{
+			{"url": "https://example.com/1", "title": "Eins"},
+			{"url": "https://example.com/2", "title": "Zwei"},
+		},
+	})
+	if rec.Code != 201 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	jobs := st.List()
+	if len(jobs) != 2 {
+		t.Fatalf("Jobs = %d", len(jobs))
+	}
+	for _, j := range jobs {
+		if j.Profile != "best" {
+			t.Fatalf("Profile = %q", j.Profile)
+		}
+	}
+}
+
+// addJobInState legt einen Job mit der URL u im Zustand state an.
+func addJobInState(t *testing.T, st *store.Store, u string, state job.State, playlistTitle string) job.Job {
+	t.Helper()
+	j := job.New(u, "Alt", "bestvideo", "Label", playlistTitle)
+	if err := st.Add(j); err != nil {
+		t.Fatal(err)
+	}
+	if state != job.StateQueued {
+		if err := st.Update(j.ID, func(x *job.Job) { x.State = state }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return j
+}
+
+func TestCreateDirectJob(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "direct", "url": "https://example.com/v", "profile": "best",
+	})
+	if rec.Code != 201 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil || len(resp.IDs) != 1 {
+		t.Fatalf("ids = %v, err %v", resp.IDs, err)
+	}
+	j, ok := st.Get(resp.IDs[0])
+	if !ok {
+		t.Fatal("Job fehlt")
+	}
+	profile, _ := ytdlp.ProfileByKey("best")
+	format, multi := intake.PlaylistFormat(profile)
+	if j.Title != "" || !j.NeedsProbe || j.Profile != "best" || j.Format != format ||
+		j.MultiAudio != multi || j.FormatLabel != profile.Label || j.State != job.StateQueued {
+		t.Fatalf("Job = %+v", j)
+	}
+	list := do(t, h, "GET", "/api/jobs", nil).Body.String()
+	if !strings.Contains(list, `"needs_probe":true`) || !strings.Contains(list, `"profile":"best"`) {
+		t.Fatalf("Liste = %s", list)
+	}
+}
+
+func TestCreateDirectJobAudioProfile(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "direct", "url": "https://example.com/v", "profile": "audio",
+	})
+	if rec.Code != 201 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	profile, _ := ytdlp.ProfileByKey("audio")
+	j := st.List()[0]
+	if j.Format != profile.Expr || j.MultiAudio {
+		t.Fatalf("Format = %q, MultiAudio = %v", j.Format, j.MultiAudio)
+	}
+}
+
+func TestCreateDirectJobValidation(t *testing.T) {
+	cases := map[string]map[string]any{
+		"ohne url":     {"type": "direct", "profile": "best"},
+		"url leer":     {"type": "direct", "url": "   ", "profile": "best"},
+		"ohne profile": {"type": "direct", "url": "https://example.com/v"},
+		"profil fremd": {"type": "direct", "url": "https://example.com/v", "profile": "gibtsnicht"},
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			h, _, _ := newServer(t, fakeProber{})
+			if rec := do(t, h, "POST", "/api/jobs", body); rec.Code != 400 {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateDirectJobDuplicate(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	body := map[string]any{"type": "direct", "url": "https://example.com/v", "profile": "best"}
+	if rec := do(t, h, "POST", "/api/jobs", body); rec.Code != 201 {
+		t.Fatalf("erster status = %d", rec.Code)
+	}
+	if rec := do(t, h, "POST", "/api/jobs", body); rec.Code != 409 {
+		t.Fatalf("zweiter status = %d", rec.Code)
+	}
+}
+
+func TestReplaceRemovesErrorAndCanceledJob(t *testing.T) {
+	for _, state := range []job.State{job.StateError, job.StateCanceled} {
+		t.Run(string(state), func(t *testing.T) {
+			h, st, _ := newServer(t, fakeProber{})
+			old := addJobInState(t, st, "https://example.com/alt", state, "")
+			rec := do(t, h, "POST", "/api/jobs", map[string]any{
+				"type": "direct", "url": "https://example.com/neu", "profile": "best", "replace": old.ID,
+			})
+			if rec.Code != 201 {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+			}
+			if _, ok := st.Get(old.ID); ok {
+				t.Fatal("alter Job existiert noch")
+			}
+			if len(st.List()) != 1 {
+				t.Fatalf("Jobs = %d", len(st.List()))
+			}
+		})
+	}
+}
+
+func TestReplaceIgnoredWhenNotReplaceable(t *testing.T) {
+	cases := map[string]struct {
+		state job.State
+		id    string // leer = ID des angelegten Jobs
+	}{
+		"queued":  {job.StateQueued, ""},
+		"running": {job.StateRunning, ""},
+		"done":    {job.StateDone, ""},
+		"unknown": {job.StateError, "gibtsnicht"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			h, st, _ := newServer(t, fakeProber{})
+			old := addJobInState(t, st, "https://example.com/alt", c.state, "")
+			id := c.id
+			if id == "" {
+				id = old.ID
+			}
+			rec := do(t, h, "POST", "/api/jobs", map[string]any{
+				"type": "direct", "url": "https://example.com/neu", "profile": "best", "replace": id,
+			})
+			if rec.Code != 201 {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+			}
+			if _, ok := st.Get(old.ID); !ok {
+				t.Fatal("alter Job wurde entfernt")
+			}
+			if len(st.List()) != 2 {
+				t.Fatalf("Jobs = %d", len(st.List()))
+			}
+		})
+	}
+}
+
+func TestReplaceKeepsOldJobOnFailure(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	old := addJobInState(t, st, "https://example.com/alt", job.StateError, "")
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "direct", "url": "https://example.com/neu", "replace": old.ID,
+	})
+	if rec.Code != 400 {
+		t.Fatalf("status (a) = %d", rec.Code)
+	}
+	if _, ok := st.Get(old.ID); !ok {
+		t.Fatal("alter Job nach 400 entfernt")
+	}
+	body := map[string]any{"type": "direct", "url": "https://example.com/dup", "profile": "best"}
+	if rec := do(t, h, "POST", "/api/jobs", body); rec.Code != 201 {
+		t.Fatalf("Vorbereitung status = %d", rec.Code)
+	}
+	body["replace"] = old.ID
+	if rec := do(t, h, "POST", "/api/jobs", body); rec.Code != 409 {
+		t.Fatalf("status (b) = %d", rec.Code)
+	}
+	if _, ok := st.Get(old.ID); !ok {
+		t.Fatal("alter Job nach 409 entfernt")
+	}
+}
+
+func TestReplaceAdoptsPlaylistTitle(t *testing.T) {
+	for _, typ := range []string{"direct", "video"} {
+		t.Run(typ, func(t *testing.T) {
+			h, st, _ := newServer(t, fakeProber{})
+			old := addJobInState(t, st, "https://example.com/alt", job.StateError, "Meine Liste")
+			rec := do(t, h, "POST", "/api/jobs", map[string]any{
+				"type": typ, "url": "https://example.com/neu", "profile": "best", "replace": old.ID,
+			})
+			if rec.Code != 201 {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+			}
+			if got := st.List()[0].PlaylistTitle; got != "Meine Liste" {
+				t.Fatalf("PlaylistTitle = %q", got)
+			}
+
+			old2 := addJobInState(t, st, "https://example.com/alt2", job.StateError, "Meine Liste")
+			rec = do(t, h, "POST", "/api/jobs", map[string]any{
+				"type": typ, "url": "https://example.com/neu2", "profile": "best",
+				"replace": old2.ID, "playlist_title": "Andere",
+			})
+			if rec.Code != 201 {
+				t.Fatalf("status 2 = %d, body %s", rec.Code, rec.Body.String())
+			}
+			found := false
+			for _, j := range st.List() {
+				if j.URL == "https://example.com/neu2" {
+					found = true
+					if j.PlaylistTitle != "Andere" {
+						t.Fatalf("PlaylistTitle = %q", j.PlaylistTitle)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("neuer Job fehlt")
+			}
+		})
+	}
+}
+
+func TestReplaceWorksForVideoAndPlaylist(t *testing.T) {
+	h, st, _ := newServer(t, fakeProber{})
+	old := addJobInState(t, st, "https://example.com/alt", job.StateError, "")
+	rec := do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "video", "url": "https://example.com/v", "profile": "best", "replace": old.ID,
+	})
+	if rec.Code != 201 {
+		t.Fatalf("video status = %d", rec.Code)
+	}
+	if _, ok := st.Get(old.ID); ok {
+		t.Fatal("video: alter Job existiert noch")
+	}
+
+	old = addJobInState(t, st, "https://example.com/alt-p", job.StateCanceled, "")
+	rec = do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "playlist", "profile": "best", "replace": old.ID,
+		"entries": []map[string]string{
+			{"url": "https://example.com/p1", "title": "Eins"},
+			{"url": "https://example.com/p2", "title": "Zwei"},
+		},
+	})
+	if rec.Code != 201 {
+		t.Fatalf("playlist status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := st.Get(old.ID); ok {
+		t.Fatal("playlist: alter Job existiert noch")
+	}
+
+	old = addJobInState(t, st, "https://example.com/alt-q", job.StateError, "")
+	rec = do(t, h, "POST", "/api/jobs", map[string]any{
+		"type": "playlist", "profile": "best", "replace": old.ID,
+		"entries": []map[string]string{
+			{"url": "", "title": "leer"},
+			{"url": "https://example.com/p1", "title": "dupliziert"},
+		},
+	})
+	if rec.Code != 201 {
+		t.Fatalf("leere Playlist status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := st.Get(old.ID); !ok {
+		t.Fatal("leere Playlist: alter Job wurde entfernt")
+	}
+}
+
+// TestIndexRendersDirectDownloadUI: URL-Karte mit Direkt-Download, Leeren-Button
+// und Ersetzt-Hinweis; das Profil-Select wird aus ytdlp.Profiles gerendert.
+func TestIndexRendersDirectDownloadUI(t *testing.T) {
+	h, _, _ := newServer(t, fakeProber{})
+	rec := do(t, h, "GET", "/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Index: %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, id := range []string{`id="direct-profile"`, `id="direct-btn"`, `id="url-clear"`, `id="replace-hint"`} {
+		if !strings.Contains(body, id) {
+			t.Fatalf("%s fehlt im gerenderten Index", id)
+		}
+	}
+	_, rest, _ := strings.Cut(body, `id="direct-profile"`)
+	sel, _, ok := strings.Cut(rest, "</select>")
+	if !ok || !strings.Contains(sel, `value="1080p-mp4"`) {
+		t.Fatalf("direct-profile enthält die Profile nicht: %s", sel)
 	}
 }

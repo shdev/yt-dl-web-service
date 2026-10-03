@@ -121,6 +121,51 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestRemoveIfRemovesWhenConditionHolds(t *testing.T) {
+	st, path := openStore(t)
+	j := job.New("https://example.com/a", "A", "ba", "l", "")
+	_ = st.Add(j)
+	removed, err := st.RemoveIf(j.ID, func(x job.Job) bool { return x.ID == j.ID })
+	if err != nil || !removed {
+		t.Fatalf("RemoveIf = %v, %v; erwartet true, nil", removed, err)
+	}
+	if _, ok := st.Get(j.ID); ok {
+		t.Fatal("Job muss entfernt sein")
+	}
+	st2, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st2.Get(j.ID); ok {
+		t.Fatal("Job muss auch nach erneutem Open entfernt sein")
+	}
+}
+
+func TestRemoveIfKeepsJobWhenConditionFails(t *testing.T) {
+	st, _ := openStore(t)
+	j := job.New("https://example.com/a", "A", "ba", "l", "")
+	_ = st.Add(j)
+	removed, err := st.RemoveIf(j.ID, func(job.Job) bool { return false })
+	if err != nil || removed {
+		t.Fatalf("RemoveIf = %v, %v; erwartet false, nil", removed, err)
+	}
+	if _, ok := st.Get(j.ID); !ok {
+		t.Fatal("Job muss erhalten bleiben")
+	}
+}
+
+func TestRemoveIfUnknownID(t *testing.T) {
+	st, _ := openStore(t)
+	called := false
+	removed, err := st.RemoveIf("unbekannt", func(job.Job) bool { called = true; return true })
+	if err != nil || removed {
+		t.Fatalf("RemoveIf = %v, %v; erwartet false, nil", removed, err)
+	}
+	if called {
+		t.Fatal("Bedingung darf für unbekannte ID nicht aufgerufen werden")
+	}
+}
+
 func TestUpdateUnknownID(t *testing.T) {
 	st, _ := openStore(t)
 	if err := st.Update("unbekannt", func(*job.Job) {}); err == nil {
@@ -161,5 +206,48 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 	if got := len(st.List()); got != 8 {
 		t.Fatalf("8 Jobs erwartet, %d vorhanden", got)
+	}
+}
+
+func TestPersistsProfileAndNeedsProbe(t *testing.T) {
+	st, path := openStore(t)
+	j := job.New("https://example.com/a", "A", "ba", "l", "")
+	j.Profile = "720p"
+	j.NeedsProbe = true
+	if err := st.Add(j); err != nil {
+		t.Fatal(err)
+	}
+	st2, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := st2.Get(j.ID)
+	if !ok {
+		t.Fatal("Job nicht gefunden")
+	}
+	if got.Profile != "720p" || !got.NeedsProbe {
+		t.Fatalf("Felder nicht persistiert: %+v", got)
+	}
+}
+
+func TestOpenOldFileWithoutNewFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "jobs.json")
+	old := `[{"id":"a1","url":"https://example.com/a","title":"A","format":"ba","format_label":"l","state":"running","progress":{"percent":0,"speed":"","eta":""},"created_at":"2026-10-01T10:00:00Z"}]`
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := st.Get("a1")
+	if !ok {
+		t.Fatal("Job nicht gefunden")
+	}
+	if got.Profile != "" || got.NeedsProbe {
+		t.Fatalf("neue Felder müssen leer sein: %+v", got)
+	}
+	if got.State != job.StateQueued {
+		t.Fatalf("State = %s, erwartet queued", got.State)
 	}
 }

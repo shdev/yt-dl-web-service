@@ -104,3 +104,36 @@ func TestJobJSONIncludesSetNewFields(t *testing.T) {
 		t.Fatalf("multi_audio nicht korrekt serialisiert: %+v", back.MultiAudio)
 	}
 }
+
+func TestJobJSONOmitsProfileAndNeedsProbeWhenEmpty(t *testing.T) {
+	j := job.New("https://example.com/a", "A", "ba", "l", "")
+	b, err := json.Marshal(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if strings.Contains(s, `"profile"`) || strings.Contains(s, `"needs_probe"`) {
+		t.Fatalf("leere Felder dürfen nicht serialisiert werden: %s", s)
+	}
+}
+
+func TestJobJSONRoundTripProfileAndNeedsProbe(t *testing.T) {
+	j := job.New("https://example.com/a", "A", "ba", "l", "")
+	j.Profile = "720p"
+	j.NeedsProbe = true
+	b, err := json.Marshal(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"profile":"720p"`) || !strings.Contains(s, `"needs_probe":true`) {
+		t.Fatalf("Felder fehlen im JSON: %s", s)
+	}
+	var back job.Job
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Profile != "720p" || !back.NeedsProbe {
+		t.Fatalf("Round-Trip verliert Felder: %+v", back)
+	}
+}

@@ -109,6 +109,23 @@ func (s *Store) Remove(id string) error {
 	return fmt.Errorf("job %s nicht gefunden", id)
 }
 
+// RemoveIf entfernt den Job nur, wenn ok unter dem Lock true liefert. Eine
+// unbekannte ID oder eine nicht erfüllte Bedingung ergibt false, nil.
+func (s *Store) RemoveIf(id string, ok func(job.Job) bool) (removed bool, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.jobs {
+		if s.jobs[i].ID == id {
+			if !ok(s.jobs[i]) {
+				return false, nil
+			}
+			s.jobs = append(s.jobs[:i], s.jobs[i+1:]...)
+			return true, s.persistLocked()
+		}
+	}
+	return false, nil
+}
+
 func (s *Store) ClaimNextQueued() (job.Job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

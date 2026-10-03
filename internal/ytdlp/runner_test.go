@@ -262,6 +262,93 @@ func containsAny(args []string, vals ...string) bool {
 	return false
 }
 
+func TestExecRunnerArgsWriteInfoJSON(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args.txt")
+	t.Setenv("ARGS_FILE", argsFile)
+	r := &ytdlp.ExecRunner{
+		Bin: "testdata/echo-args.sh", DownloadDir: dir,
+		OutputTemplate: "x.%(ext)s",
+	}
+	if err := r.Run(context.Background(), testJob(), func(job.Progress) {}); err != nil {
+		t.Fatal(err)
+	}
+	args := readArgs(t, argsFile)
+	if !containsSeq(args, "--print", "after_move:filepath", "--write-info-json") {
+		t.Fatalf("--write-info-json muss direkt auf --print after_move:filepath folgen: %v", args)
+	}
+}
+
+func TestExecRunnerMovesInfoJSONToMetaSidecar(t *testing.T) {
+	dir := t.TempDir()
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	media := filepath.Join(absDir, "youtube", "Titel [abc].mp4")
+	t.Setenv("PRINT_LINE", media)
+	r := &ytdlp.ExecRunner{
+		Bin: "testdata/infojson.sh", DownloadDir: dir,
+		OutputTemplate: "%(title)s.%(ext)s",
+	}
+	if err := r.Run(context.Background(), testJob(), func(job.Progress) {}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(media + ".meta.json")
+	if err != nil {
+		t.Fatalf("Metadatei fehlt: %v", err)
+	}
+	if string(got) != `{"id":"abc","title":"Titel"}` {
+		t.Fatalf("Inhalt verändert: %s", got)
+	}
+	if _, err := os.Stat(strings.TrimSuffix(media, ".mp4") + ".info.json"); !os.IsNotExist(err) {
+		t.Fatalf(".info.json muss weg sein, Stat-Fehler: %v", err)
+	}
+}
+
+func TestExecRunnerWithoutInfoJSONStillSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	media := filepath.Join(absDir, "Titel [abc].mp4")
+	t.Setenv("PRINT_LINE", media)
+	t.Setenv("NO_INFOJSON", "1")
+	r := &ytdlp.ExecRunner{
+		Bin: "testdata/infojson.sh", DownloadDir: dir,
+		OutputTemplate: "%(title)s.%(ext)s",
+	}
+	if err := r.Run(context.Background(), testJob(), func(job.Progress) {}); err != nil {
+		t.Fatalf("fehlende info.json darf den Job nicht scheitern lassen: %v", err)
+	}
+	if _, err := os.Stat(media + ".meta.json"); !os.IsNotExist(err) {
+		t.Fatalf("keine .meta.json erwartet, Stat-Fehler: %v", err)
+	}
+}
+
+func TestExecRunnerFailedDownloadDoesNotRenameInfoJSON(t *testing.T) {
+	dir := t.TempDir()
+	info := filepath.Join(dir, "Titel [abc].info.json")
+	if err := os.WriteFile(info, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PRINT_LINE", filepath.Join(dir, "Titel [abc].mp4"))
+	r := &ytdlp.ExecRunner{
+		Bin: "testdata/dl-fail.sh", DownloadDir: dir,
+		OutputTemplate: "%(title)s.%(ext)s",
+	}
+	if err := r.Run(context.Background(), testJob(), func(job.Progress) {}); err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	if _, err := os.Stat(info); err != nil {
+		t.Fatalf(".info.json muss unangetastet bleiben: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Titel [abc].mp4.meta.json")); !os.IsNotExist(err) {
+		t.Fatalf("keine .meta.json erwartet: %v", err)
+	}
+}
+
 func TestExecRunnerCancel(t *testing.T) {
 	r := &ytdlp.ExecRunner{
 		Bin: "testdata/dl-sleep.sh", DownloadDir: t.TempDir(),

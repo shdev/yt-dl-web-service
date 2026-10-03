@@ -3,9 +3,11 @@ package ytdlp
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -41,6 +43,7 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 		"--no-playlist",
 		"--no-warnings",
 		"--print", "after_move:filepath",
+		"--write-info-json",
 		"--write-thumbnail",
 		"--convert-thumbnails", "jpg",
 		"-o", "thumbnail:" + filepath.Join(r.DownloadDir, posterTemplate(r.OutputTemplate)),
@@ -72,10 +75,12 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 	if absErr != nil {
 		absDownloadDir = r.DownloadDir
 	}
+	var mediaPath string // absoluter Pfad der letzten after_move:filepath-Zeile
 	sc := bufio.NewScanner(stdout)
 	for sc.Scan() {
 		line := sc.Text()
 		if strings.HasPrefix(line, absDownloadDir+string(filepath.Separator)) {
+			mediaPath = line
 			if r.OnFilename != nil {
 				if rel, relErr := filepath.Rel(absDownloadDir, line); relErr == nil {
 					r.OnFilename(rel)
@@ -100,7 +105,37 @@ func (r *ExecRunner) Run(ctx context.Context, j job.Job, onProgress func(job.Pro
 		}
 		return fmt.Errorf("yt-dlp: %w: %s", err, stderr.String())
 	}
+	if mediaPath != "" {
+		// Die Metadatei ist Beiwerk: ein Fehler lässt den Job nicht scheitern.
+		if err := moveInfoJSON(mediaPath); err != nil {
+			log.Printf("yt-dlp: Metadatei nicht abgelegt: %v", err)
+		}
+	}
 	return nil
+}
+
+// metaSuffix wird an den vollen Mediendateinamen (inkl. Endung) angehängt.
+const metaSuffix = ".meta.json"
+
+// infoJSONCandidates liefert die Pfade, unter denen yt-dlp die info.json zur
+// Mediendatei ablegen kann: zuerst "<Stamm ohne Medien-Extension>.info.json",
+// dann "<Mediendatei>.info.json".
+func infoJSONCandidates(mediaPath string) []string {
+	return []string{
+		strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json",
+		mediaPath + ".info.json",
+	}
+}
+
+// moveInfoJSON benennt die von --write-info-json geschriebene info.json in
+// "<Mediendatei>.meta.json" um (yt-dlp erlaubt keine eigene Endung).
+func moveInfoJSON(mediaPath string) error {
+	for _, c := range infoJSONCandidates(mediaPath) {
+		if _, err := os.Stat(c); err == nil {
+			return os.Rename(c, mediaPath+metaSuffix)
+		}
+	}
+	return errors.New("keine info.json gefunden")
 }
 
 // posterTemplate leitet aus dem Video-Output-Template das Output-Template

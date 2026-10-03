@@ -1,6 +1,6 @@
 # Metadaten-Sidecar (`.meta.json`) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) oder superpowers:executing-plans, Task für Task. Status: Entwurf, wartet auf Freigabe durch den Nutzer.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) oder superpowers:executing-plans, Task für Task. Status: vom Nutzer am 2026-10-03 freigegeben, Umsetzung in Session yt-dl-1.
 
 ## Goal
 
@@ -16,7 +16,7 @@ Go 1.24, yt-dlp im Container (geprüft mit 2026.08.19).
 
 ## Entscheidungen
 
-1. **Dateiname:** Voller Mediendateiname plus `.meta.json`, Beispiel `Me at the zoo [jNQXAC9IVRw].mp4` → `Me at the zoo [jNQXAC9IVRw].mp4.meta.json`. Annahme aus der Formulierung „angehängt"; die Alternative `…[jNQXAC9IVRw].meta.json` wurde nicht gewählt, weil Audio- und Video-Download desselben Videos sonst dieselbe Metadatei teilen würden.
+1. **Dateiname:** Voller Mediendateiname plus `.meta.json`, Beispiel `Me at the zoo [jNQXAC9IVRw].mp4` → `Me at the zoo [jNQXAC9IVRw].mp4.meta.json`. Vom Nutzer am 2026-10-03 bestätigt (mit Medien-Endung); die Alternative `…[jNQXAC9IVRw].meta.json` wurde nicht gewählt, weil Audio- und Video-Download desselben Videos sonst dieselbe Metadatei teilen würden.
 
 2. **Inhalt:** Die unveränderte `info.json` von yt-dlp (von yt-dlp bereinigt, keine eigene Filterung). Enthält u. a. `description`, `channel`, `upload_date`, `view_count`, `like_count`, `tags`, `categories`, `chapters`, `subtitles`, `automatic_captions`, `thumbnails`, `formats`.
 
@@ -87,5 +87,4 @@ Probe vom 2026-10-03, yt-dlp 2026.08.19 in python:3.12-alpine.
 
 ## Offene Punkte
 
-- Bestätigung der Namensform aus Entscheidung 1.
 - Bestehende Downloads erhalten keine Metadatei nachträglich (nicht Teil dieses Plans).

@@ -688,7 +688,7 @@ function cardHtml(j) {
   }
   const meta = metaParts.filter(Boolean).join(" · ");
   let extra = j.error
-    ? `<div class="col-span-full text-xs text-danger">${esc(j.error)}</div>` : "";
+    ? `<div class="col-span-full min-w-0 wrap-anywhere text-xs text-danger">${esc(j.error)}</div>` : "";
   if (j.state === "done" && j.filename) {
     extra += `<div class="col-span-full truncate text-xs text-muted cursor-pointer font-mono"
       data-action="copy" data-filename="${esc(j.filename)}" title="${esc(j.filename)}">${esc(j.filename)}</div>`;

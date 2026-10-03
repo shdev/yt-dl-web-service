@@ -10,7 +10,7 @@ land directly in a mounted folder (e.g. your media library).
 
 - Paste a URL, inspect title, thumbnail and every available format (via `yt-dlp -J`)
 - Pick exact video + audio formats, best quality, or audio-only
-- One-click **Download** with a quality profile, skipping the analysis step
+- One-click "Download" with a quality profile, skipping the analysis step
 - Playlist support: one job per video, with quality profiles (best / ≤1080p / ≤720p / audio only)
 - Multi-language audio: for videos with several audio tracks, downloads the
   preferred language (German, then English) plus the original track whenever
@@ -114,9 +114,9 @@ write the sidecar is only logged — it never fails the job.
 
 ## Quick download, re-picking and copying URLs
 
-**Quick download:** The profile dropdown next to *Analyze* (preset to your default profile) and the **Download** button queue the URL right away; analysis happens in the queue (card shows "Wird analysiert"). For a playlist, one job is created per video; audio tracks are chosen automatically (German plus original, as for playlists). If the analysis fails, the job appears as failed.
+**Quick download:** The profile dropdown next to "Analysieren" (preset to your default profile) and the "Download" button queue the URL right away; analysis happens in the queue (card shows "Wird analysiert"). For a playlist, one job is created per video; audio tracks are chosen automatically (German plus original, as for playlists). If the analysis fails, the job appears as failed.
 
-**Re-pick:** Failed or cancelled jobs have a **Re-pick** button next to *Retry*: it puts the URL back into the URL field, and when you start the new download (quick or after analysis), it replaces the old entry. The link is dropped when you edit or clear the field or click ✕ in the hint. The old entry stays untouched if creating the new job fails. *Retry* still retries with the same settings.
+**Re-pick:** Failed or cancelled jobs have a "Neu wählen" button next to "Erneut": it puts the URL back into the URL field, and when you start the new download (quick or after analysis), it replaces the old entry. The link is dropped when you edit or clear the field or click ✕ in the hint. The old entry stays untouched if creating the new job fails. "Erneut" still retries with the same settings.
 
 **Copy URL:** Every job card shows the URL it was started with (a link only for http/https) with a copy button; works over plain `http://<LAN-IP>` too (fallback without the Clipboard API). Clicking the filename copies it the same way.
 

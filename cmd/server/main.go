@@ -74,7 +74,8 @@ func run(cfg config.Config) error {
 		DownloadDir:    cfg.DownloadDir,
 		OutputTemplate: cfg.OutputTemplate,
 	}
-	q := queue.New(st, runner, cfg.MaxConcurrent)
+	prober := &ytdlp.Prober{Bin: bin}
+	q := queue.New(st, runner, cfg.MaxConcurrent, queue.WithProber(prober))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -83,7 +84,7 @@ func run(cfg config.Config) error {
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           server.New(st, q, &ytdlp.Prober{Bin: bin}, set, &ytdlp.Manager{Bin: bin}),
+		Handler:           server.New(st, q, prober, set, &ytdlp.Manager{Bin: bin}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)

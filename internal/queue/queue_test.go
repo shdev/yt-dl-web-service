@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
+	"ytdlweb/internal/intake"
 	"ytdlweb/internal/job"
 	"ytdlweb/internal/queue"
 	"ytdlweb/internal/store"
@@ -264,5 +266,325 @@ func TestQueueCancelQueued(t *testing.T) {
 	}
 	if got.FinishedAt == nil {
 		t.Fatalf("canceled (queued) Job muss FinishedAt gesetzt haben: %+v", got)
+	}
+}
+
+// fakeProber zählt Aufrufe und kann blockieren oder scheitern.
+type fakeProber struct {
+	mu     sync.Mutex
+	res    *ytdlp.ProbeResult
+	err    error
+	calls  int
+	block  chan struct{} // gesetzt: Probe wartet auf close oder ctx.Done
+	called chan struct{} // gesetzt: jeder Aufruf meldet sich (gepuffert)
+}
+
+func (f *fakeProber) Probe(ctx context.Context, url string) (*ytdlp.ProbeResult, error) {
+	f.mu.Lock()
+	f.calls++
+	res, err := f.res, f.err
+	f.mu.Unlock()
+	if f.called != nil {
+		f.called <- struct{}{}
+	}
+	if f.block != nil {
+		select {
+		case <-f.block:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return res, err
+}
+
+func (f *fakeProber) set(res *ytdlp.ProbeResult, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.res, f.err = res, err
+}
+
+func (f *fakeProber) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+// recordingRunner meldet erfolgreich zurück und merkt sich alle gelaufenen Job-IDs.
+type recordingRunner struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (r *recordingRunner) Run(_ context.Context, j job.Job, _ func(job.Progress)) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ids = append(r.ids, j.ID)
+	return nil
+}
+
+func (r *recordingRunner) ran(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, x := range r.ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
+// newQueueProber wie newQueue, aber mit optionalem Prober (nil: ohne Option).
+func newQueueProber(t *testing.T, r queue.Runner, p queue.Prober) (*queue.Queue, *store.Store) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "jobs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var opts []queue.Option
+	if p != nil {
+		opts = append(opts, queue.WithProber(p))
+	}
+	q := queue.New(st, r, 1, opts...)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	q.Start(ctx)
+	return q, st
+}
+
+// addProbeJob legt einen Platzhalter-Job mit NeedsProbe an.
+func addProbeJob(t *testing.T, st *store.Store, url, profileKey string) job.Job {
+	t.Helper()
+	profile, ok := ytdlp.ProfileByKey(profileKey)
+	if !ok {
+		t.Fatalf("Profil %q unbekannt", profileKey)
+	}
+	format, multi := intake.PlaylistFormat(profile)
+	j := job.New(url, "", format, profile.Label, "")
+	j.MultiAudio = multi
+	j.Profile = profile.Key
+	j.NeedsProbe = true
+	if err := st.Add(j); err != nil {
+		t.Fatal(err)
+	}
+	return j
+}
+
+func waitGone(t *testing.T, st *store.Store, id string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := st.Get(id); !ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("job %s existiert noch, erwartet entfernt", id)
+}
+
+func probeVideo() *ytdlp.ProbeResult {
+	return &ytdlp.ProbeResult{Type: "video", Video: &ytdlp.Video{ID: "x", Title: "Probe-Titel"}}
+}
+
+func probePlaylist() *ytdlp.ProbeResult {
+	return &ytdlp.ProbeResult{Type: "playlist", Playlist: &ytdlp.Playlist{Title: "PL", Entries: []ytdlp.PlaylistEntry{
+		{URL: "https://example.com/e1", Title: "E1"},
+		{URL: "https://example.com/e2", Title: "E2"},
+	}}}
+}
+
+func TestQueueProbeVideoSetsTitleAndRuns(t *testing.T) {
+	fp := &fakeProber{res: probeVideo()}
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, fp)
+	j := addProbeJob(t, st, "https://example.com/v", "best")
+	q.Kick()
+	waitState(t, st, j.ID, job.StateDone)
+	got, _ := st.Get(j.ID)
+	if got.Title != "Probe-Titel" || got.NeedsProbe {
+		t.Fatalf("Titel/NeedsProbe falsch: %+v", got)
+	}
+	if !rr.ran(j.ID) {
+		t.Fatal("Runner lief nicht")
+	}
+	if fp.count() != 1 {
+		t.Fatalf("Probe-Aufrufe %d, erwartet 1", fp.count())
+	}
+}
+
+func TestQueuePlaylistCreatesEntryJobsAndRemovesPlaceholder(t *testing.T) {
+	fp := &fakeProber{res: probePlaylist()}
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, fp)
+	j := addProbeJob(t, st, "https://example.com/pl", "best")
+	q.Kick()
+	waitGone(t, st, j.ID)
+	profile, _ := ytdlp.ProfileByKey("best")
+	format, _ := intake.PlaylistFormat(profile)
+	want := map[string]string{"https://example.com/e1": "E1", "https://example.com/e2": "E2"}
+	jobs := st.List()
+	if len(jobs) != 2 {
+		t.Fatalf("erwartet 2 Jobs, war %d: %+v", len(jobs), jobs)
+	}
+	for _, x := range jobs {
+		title, ok := want[x.URL]
+		if !ok {
+			t.Fatalf("unerwartete URL %s", x.URL)
+		}
+		if x.PlaylistTitle != "PL" || x.Format != format || x.Profile != "best" || x.Title != title {
+			t.Fatalf("Job falsch angelegt: %+v", x)
+		}
+		waitState(t, st, x.ID, job.StateDone)
+	}
+	if rr.ran(j.ID) {
+		t.Fatal("Runner darf für den Platzhalter nicht laufen")
+	}
+}
+
+func TestQueuePlaylistSkipsDuplicates(t *testing.T) {
+	fp := &fakeProber{res: probePlaylist()}
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, fp)
+	profile, _ := ytdlp.ProfileByKey("best")
+	format, _ := intake.PlaylistFormat(profile)
+	dup := job.New("https://example.com/e1", "E1", format, profile.Label, "")
+	dup.State = job.StateRunning
+	if err := st.Add(dup); err != nil {
+		t.Fatal(err)
+	}
+	j := addProbeJob(t, st, "https://example.com/pl", "best")
+	q.Kick()
+	waitGone(t, st, j.ID)
+	jobs := st.List()
+	if len(jobs) != 2 {
+		t.Fatalf("erwartet Duplikat plus 1 neuer Job, war %d: %+v", len(jobs), jobs)
+	}
+	n := 0
+	for _, x := range jobs {
+		if x.URL == "https://example.com/e2" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("Eintrag 2 muss genau einmal existieren, war %d", n)
+	}
+}
+
+func TestQueueEmptyPlaylistFails(t *testing.T) {
+	fp := &fakeProber{res: &ytdlp.ProbeResult{Type: "playlist", Playlist: &ytdlp.Playlist{Title: "PL"}}}
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, fp)
+	j := addProbeJob(t, st, "https://example.com/pl", "best")
+	q.Kick()
+	waitState(t, st, j.ID, job.StateError)
+	got, _ := st.Get(j.ID)
+	if got.Error != "Playlist enthält keine Einträge" || !got.NeedsProbe {
+		t.Fatalf("Fehler/NeedsProbe falsch: %+v", got)
+	}
+	if rr.ran(j.ID) {
+		t.Fatal("Runner darf nicht laufen")
+	}
+}
+
+func TestQueueProbeErrorKeepsNeedsProbeAndRetryProbesAgain(t *testing.T) {
+	fp := &fakeProber{err: errors.New("kaputt")}
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, fp)
+	j := addProbeJob(t, st, "https://example.com/v", "best")
+	q.Kick()
+	waitState(t, st, j.ID, job.StateError)
+	got, _ := st.Get(j.ID)
+	if got.Error != "kaputt" || !got.NeedsProbe {
+		t.Fatalf("Fehler/NeedsProbe falsch: %+v", got)
+	}
+	if rr.ran(j.ID) || fp.count() != 1 {
+		t.Fatalf("Runner lief oder Probe-Aufrufe %d != 1", fp.count())
+	}
+	fp.set(probeVideo(), nil)
+	if err := st.Update(j.ID, func(x *job.Job) {
+		x.State = job.StateQueued
+		x.Error = ""
+		x.FinishedAt = nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	q.Kick()
+	waitState(t, st, j.ID, job.StateDone)
+	got, _ = st.Get(j.ID)
+	if fp.count() != 2 || got.Title != "Probe-Titel" {
+		t.Fatalf("Probe-Aufrufe %d, Titel %q", fp.count(), got.Title)
+	}
+}
+
+func TestQueueCancelDuringProbe(t *testing.T) {
+	fp := &fakeProber{res: probeVideo(), block: make(chan struct{}), called: make(chan struct{}, 4)}
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, fp)
+	j := addProbeJob(t, st, "https://example.com/v", "best")
+	q.Kick()
+	select {
+	case <-fp.called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Probe wurde nicht aufgerufen")
+	}
+	q.Cancel(j.ID)
+	waitState(t, st, j.ID, job.StateCanceled)
+	got, _ := st.Get(j.ID)
+	if got.FinishedAt == nil || !got.NeedsProbe {
+		t.Fatalf("FinishedAt/NeedsProbe falsch: %+v", got)
+	}
+	if rr.ran(j.ID) {
+		t.Fatal("Runner darf nicht laufen")
+	}
+}
+
+func TestQueueSkipsProbeWithoutNeedsProbe(t *testing.T) {
+	fp := &fakeProber{res: probeVideo()}
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, fp)
+	j := addJob(t, st, 0)
+	q.Kick()
+	waitState(t, st, j.ID, job.StateDone)
+	if fp.count() != 0 {
+		t.Fatalf("Probe-Aufrufe %d, erwartet 0", fp.count())
+	}
+}
+
+func TestQueueNeedsProbeWithoutProberFails(t *testing.T) {
+	rr := &recordingRunner{}
+	q, st := newQueueProber(t, rr, nil)
+	j := addProbeJob(t, st, "https://example.com/v", "best")
+	q.Kick()
+	waitState(t, st, j.ID, job.StateError)
+	got, _ := st.Get(j.ID)
+	if got.Error != "Analyse nicht verfügbar" {
+		t.Fatalf("Fehler %q", got.Error)
+	}
+	if rr.ran(j.ID) {
+		t.Fatal("Runner darf nicht laufen")
+	}
+}
+
+func TestQueueShutdownDuringProbeKeepsRunning(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "jobs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fp := &fakeProber{res: probeVideo(), block: make(chan struct{}), called: make(chan struct{}, 4)}
+	rr := &recordingRunner{}
+	q := queue.New(st, rr, 1, queue.WithProber(fp))
+	ctx, cancel := context.WithCancel(context.Background())
+	q.Start(ctx)
+	j := addProbeJob(t, st, "https://example.com/v", "best")
+	q.Kick()
+	select {
+	case <-fp.called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Probe wurde nicht aufgerufen")
+	}
+	cancel() // Shutdown (Root-Context), kein Nutzer-Cancel
+	time.Sleep(200 * time.Millisecond)
+	got, _ := st.Get(j.ID)
+	if got.State != job.StateRunning {
+		t.Fatalf("Shutdown darf running nicht überschreiben, war %s", got.State)
 	}
 }

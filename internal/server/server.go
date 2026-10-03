@@ -189,6 +189,44 @@ type createJobsRequest struct {
 	PlaylistTitle  string         `json:"playlist_title"`
 	Entries        []entryPayload `json:"entries"`
 	AudioFormatIDs []string       `json:"audio_format_ids"`
+	Replace        string         `json:"replace"`
+}
+
+// createOutcome ist das Ergebnis eines create*-Zweigs; handleCreateJobs
+// schreibt die Antwort erst, nachdem ein ersetzter Job entfernt wurde.
+type createOutcome struct {
+	status int            // 201 bei Erfolg, sonst Fehlercode
+	errMsg string         // Meldung bei status != 201
+	ids    []string       // angelegte Job-IDs
+	body   map[string]any // JSON-Antwort bei 201
+}
+
+func failOutcome(status int, msg string) createOutcome {
+	return createOutcome{status: status, errMsg: msg}
+}
+
+// replaceable liefert den Job zu id, wenn er ersetzt werden darf
+// (State error oder canceled).
+func (s *Server) replaceable(id string) (job.Job, bool) {
+	if id == "" {
+		return job.Job{}, false
+	}
+	j, ok := s.store.Get(id)
+	if !ok || (j.State != job.StateError && j.State != job.StateCanceled) {
+		return job.Job{}, false
+	}
+	return j, true
+}
+
+// removeReplaced entfernt den ersetzten Job; der Zustand wird erneut
+// geprüft, weil er zwischenzeitlich per Retry wieder queued sein kann.
+func (s *Server) removeReplaced(id string) {
+	if _, ok := s.replaceable(id); !ok {
+		return
+	}
+	if err := s.store.Remove(id); err != nil {
+		log.Printf("server: ersetzter Job %s nicht entfernt: %v", id, err)
+	}
 }
 
 func (s *Server) handleCreateJobs(w http.ResponseWriter, r *http.Request) {
@@ -197,21 +235,62 @@ func (s *Server) handleCreateJobs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "ungültiger Request-Body")
 		return
 	}
+	replaced, canReplace := s.replaceable(req.Replace)
+	playlistTitle := req.PlaylistTitle
+	if playlistTitle == "" && canReplace {
+		playlistTitle = replaced.PlaylistTitle
+	}
+	var out createOutcome
 	switch req.Type {
 	case "video":
-		s.createVideoJob(w, req)
+		out = s.createVideoJob(req, playlistTitle)
+	case "direct":
+		out = s.createDirectJob(req, playlistTitle)
 	case "playlist":
-		s.createPlaylistJobs(w, req)
+		out = s.createPlaylistJobs(req)
 	default:
-		writeError(w, http.StatusBadRequest, "type muss video oder playlist sein")
+		writeError(w, http.StatusBadRequest, "type muss video, playlist oder direct sein")
+		return
 	}
+	if out.status != http.StatusCreated {
+		writeError(w, out.status, out.errMsg)
+		return
+	}
+	if canReplace && len(out.ids) > 0 {
+		s.removeReplaced(req.Replace)
+	}
+	writeJSON(w, http.StatusCreated, out.body)
 }
 
-func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
+func (s *Server) createDirectJob(req createJobsRequest, playlistTitle string) createOutcome {
 	url := strings.TrimSpace(req.URL)
 	if url == "" {
-		writeError(w, http.StatusBadRequest, "url fehlt")
-		return
+		return failOutcome(http.StatusBadRequest, "url fehlt")
+	}
+	profile, ok := ytdlp.ProfileByKey(req.Profile)
+	if !ok {
+		return failOutcome(http.StatusBadRequest, "unbekanntes Profil")
+	}
+	format, multi := intake.PlaylistFormat(profile)
+	if intake.IsDuplicate(s.store, url, format) {
+		return failOutcome(http.StatusConflict, "Dieser Download läuft bereits")
+	}
+	j := job.New(url, "", format, profile.Label, playlistTitle)
+	j.MultiAudio = multi
+	j.Profile = profile.Key
+	j.NeedsProbe = true
+	if err := s.store.Add(j); err != nil {
+		return failOutcome(http.StatusInternalServerError, err.Error())
+	}
+	s.queue.Kick()
+	return createOutcome{status: http.StatusCreated, ids: []string{j.ID},
+		body: map[string]any{"ids": []string{j.ID}}}
+}
+
+func (s *Server) createVideoJob(req createJobsRequest, playlistTitle string) createOutcome {
+	url := strings.TrimSpace(req.URL)
+	if url == "" {
+		return failOutcome(http.StatusBadRequest, "url fehlt")
 	}
 	var format, label, profileKey string
 	// ids sind die tatsächlich verwendeten Audiospuren — in Audio-only-
@@ -226,8 +305,7 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 	if req.Profile != "" {
 		profile, ok := ytdlp.ProfileByKey(req.Profile)
 		if !ok {
-			writeError(w, http.StatusBadRequest, "unbekanntes Profil")
-			return
+			return failOutcome(http.StatusBadRequest, "unbekanntes Profil")
 		}
 		profileKey = profile.Key
 		format = profile.Expr
@@ -264,30 +342,27 @@ func (s *Server) createVideoJob(w http.ResponseWriter, req createJobsRequest) {
 		}
 	}
 	if intake.IsDuplicate(s.store, url, format) {
-		writeError(w, http.StatusConflict, "Dieser Download läuft bereits")
-		return
+		return failOutcome(http.StatusConflict, "Dieser Download läuft bereits")
 	}
-	j := job.New(url, req.Title, format, label, "")
+	j := job.New(url, req.Title, format, label, playlistTitle)
 	j.AudioFormatIDs = ids
 	j.Profile = profileKey
 	j.MultiAudio = len(ids) > 1
 	if err := s.store.Add(j); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return failOutcome(http.StatusInternalServerError, err.Error())
 	}
 	s.queue.Kick()
-	writeJSON(w, http.StatusCreated, map[string]any{"ids": []string{j.ID}})
+	return createOutcome{status: http.StatusCreated, ids: []string{j.ID},
+		body: map[string]any{"ids": []string{j.ID}}}
 }
 
-func (s *Server) createPlaylistJobs(w http.ResponseWriter, req createJobsRequest) {
+func (s *Server) createPlaylistJobs(req createJobsRequest) createOutcome {
 	profile, ok := ytdlp.ProfileByKey(req.Profile)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "unbekanntes Profil")
-		return
+		return failOutcome(http.StatusBadRequest, "unbekanntes Profil")
 	}
 	if len(req.Entries) == 0 {
-		writeError(w, http.StatusBadRequest, "keine Einträge")
-		return
+		return failOutcome(http.StatusBadRequest, "keine Einträge")
 	}
 	entries := make([]intake.Entry, len(req.Entries))
 	for i, e := range req.Entries {
@@ -296,11 +371,11 @@ func (s *Server) createPlaylistJobs(w http.ResponseWriter, req createJobsRequest
 	ids, skipped, err := intake.CreatePlaylistJobs(s.store, profile, req.PlaylistTitle, entries)
 	if err != nil {
 		s.queue.Kick() // bereits angelegte Jobs nicht stranden lassen
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return failOutcome(http.StatusInternalServerError, err.Error())
 	}
 	s.queue.Kick()
-	writeJSON(w, http.StatusCreated, map[string]any{"ids": ids, "skipped": skipped})
+	return createOutcome{status: http.StatusCreated, ids: ids,
+		body: map[string]any{"ids": ids, "skipped": skipped}}
 }
 
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
